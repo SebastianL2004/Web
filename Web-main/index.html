@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resource CSA - Plataforma Colaborativa</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container">
+    <a class="navbar-brand" href="#"><i class="fas fa-school"></i> Resource CSA</a>
+    <div class="navbar-nav ms-auto">
+      <span class="nav-link" id="username">No autenticado</span>
+      <a class="nav-link" href="#" id="logoutBtn" style="display:none" onclick="logout()">Cerrar Sesión</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4" id="mainContent" style="display:none">
+  <!-- VISTA DIRECTOR -->
+  <div id="directorView" style="display:none">
+    <h3>Panel de Control - Director</h3>
+    
+    <!-- Docentes conectados arriba -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h6>Docentes Conectados</h6>
+          </div>
+          <div class="card-body">
+            <div id="onlineTeachersDirector"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Solicitudes PIE en lado izquierdo -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Solicitudes de Hora con PIE</h6>
+          </div>
+          <div class="card-body" id="pieRequestsListDirector">
+            <div class="loading"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Proyectos a realizar en lado derecho -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Proyectos Colaborativos</h6>
+          </div>
+          <div class="card-body" id="collaborativeProjectsDirector">
+            <div class="loading"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA PROFESOR -->
+  <div id="teacherView" style="display:none">
+    <h3>Mis Recursos / Proyectos</h3>
+    
+    <!-- Botones de acción -->
+    <div class="card mb-3">
+      <div class="card-body text-center">
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+          <i class="fas fa-upload"></i> Subir Contenido
+        </button>
+        <button class="btn btn-info ms-2" data-bs-toggle="modal" data-bs-target="#schedulePieModal">
+          <i class="fas fa-calendar-plus"></i> Asignar Hora con PIE
+        </button>
+        <button class="btn btn-warning ms-2" data-bs-toggle="modal" data-bs-target="#collaborativeProjectModal">
+          <i class="fas fa-users"></i> Crear Proyecto Colaborativo
+        </button>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Mis archivos en lado izquierdo -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Mis Archivos Subidos</h6>
+          </div>
+          <div class="card-body" id="projectsList"></div>
+        </div>
+      </div>
+
+      <!-- Mis solicitudes PIE en lado derecho -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Mis Solicitudes de Hora con PIE</h6>
+          </div>
+          <div class="card-body" id="myPieRequests"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA ASISTENTE PIE -->
+  <div id="assistantView" style="display:none">
+    <h3>Panel de Control - Asistente PIE</h3>
+    
+    <!-- Docentes conectados arriba -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h6>Docentes Conectados</h6>
+          </div>
+          <div class="card-body">
+            <div id="onlineTeachersAssistant"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Solicitudes PIE en lado izquierdo -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Solicitudes de Hora con PIE</h6>
+          </div>
+          <div class="card-body" id="pieRequestsListAssistant">
+            <div class="loading"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Proyectos colaborativos en lado derecho -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h6>Proyectos Colaborativos</h6>
+          </div>
+          <div class="card-body" id="collaborativeProjectsAssistant">
+            <div class="loading"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Login Modal -->
+<div class="modal fade" id="loginModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Iniciar Sesión</h5></div>
+      <div class="modal-body">
+        <form id="loginForm">
+          <div class="mb-3">
+            <label class="form-label">Correo</label>
+            <input type="email" id="loginEmail" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <input type="password" id="loginPassword" class="form-control" required>
+          </div>
+          <button class="btn btn-primary w-100" type="submit">Ingresar</button>
+        </form>
+        <hr>
+        <div class="text-center">
+          <small>¿No tienes cuenta? <a href="#" data-bs-target="#registerModal" data-bs-toggle="modal" data-bs-dismiss="modal">Regístrate</a></small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Register Modal -->
+<div class="modal fade" id="registerModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Registro de Usuario</h5></div>
+      <div class="modal-body">
+        <form id="registerForm">
+          <div class="mb-3">
+            <label class="form-label">Nombre completo</label>
+            <input type="text" id="regName" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Correo</label>
+            <input type="email" id="regEmail" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <input type="password" id="regPassword" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Rol</label>
+            <select id="regRole" class="form-select" required>
+              <option value="">Seleccionar...</option>
+              <option value="director">Director</option>
+              <option value="profesor">Profesor</option>
+              <option value="asistente">Asistente PIE</option>
+            </select>
+          </div>
+          <button class="btn btn-success w-100" type="submit">Registrar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Subir Contenido Completo -->
+<div class="modal fade" id="uploadContentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Subir Contenido</h5></div>
+      <div class="modal-body">
+        <form id="uploadContentForm">
+          <div class="mb-3">
+            <label class="form-label">Título del proyecto</label>
+            <input id="contentTitle" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Asignatura</label>
+            <input id="contentSubject" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Descripción</label>
+            <textarea id="contentDescription" class="form-control" rows="3" required></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Archivo (Word, PDF, Video, etc)</label>
+            <input type="file" id="contentFile" class="form-control" required>
+          </div>
+
+          <button class="btn btn-success w-100" type="submit">Guardar y Subir</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Asignar Hora con PIE -->
+<div class="modal fade" id="schedulePieModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Solicitar Hora con PIE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="schedulePieForm">
+          <!-- Datos del Estudiante -->
+          <div class="form-section mb-4">
+            <h6 class="section-title">Datos del Estudiante</h6>
+            <div class="mb-3">
+              <label class="form-label">Nombre completo del estudiante *</label>
+              <input type="text" id="studentName" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Curso *</label>
+              <input type="text" id="studentGrade" class="form-control" placeholder="Ej: 4°A, 7°B" required>
+            </div>
+          </div>
+
+          <!-- Datos del Apoderado -->
+          <div class="form-section mb-4">
+            <h6 class="section-title">Datos del Apoderado</h6>
+            <div class="mb-3">
+              <label class="form-label">Nombre completo del apoderado *</label>
+              <input type="text" id="parentName" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Teléfono *</label>
+              <input type="tel" id="parentPhone" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Correo electrónico *</label>
+              <input type="email" id="parentEmail" class="form-control" required>
+            </div>
+          </div>
+
+          <!-- Solicitud de Hora -->
+          <div class="form-section mb-4">
+            <h6 class="section-title">Solicitud de Hora</h6>
+            <div class="mb-3">
+              <label class="form-label">Asignatura *</label>
+              <select id="subjectRequest" class="form-select" required>
+                <option value="">Seleccionar asignatura...</option>
+                <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
+                <option value="Matemáticas">Matemáticas</option>
+                <option value="Historia">Historia</option>
+                <option value="Ciencias">Ciencias</option>
+                <option value="Inglés">Inglés</option>
+                <option value="Arte">Arte</option>
+                <option value="Música">Música</option>
+                <option value="Educación Física">Educación Física</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Otra">Otra</option>
+              </select>
+            </div>
+            
+            <!-- Fecha Preferida -->
+            <div class="mb-3">
+              <label class="form-label">Fecha preferida *</label>
+              <input type="date" id="preferredDate" class="form-control" required>
+            </div>
+
+            <!-- Hora Preferida -->
+            <div class="mb-3">
+              <label class="form-label">Hora preferida *</label>
+              <input type="time" id="preferredTime" class="form-control" required>
+            </div>
+
+            <!-- Días Alternativos -->
+            <div class="mb-3">
+              <label class="form-label">Días alternativos de preferencia</label>
+              <select id="preferredDays" class="form-select" multiple>
+                <option value="Lunes">Lunes</option>
+                <option value="Martes">Martes</option>
+                <option value="Miércoles">Miércoles</option>
+                <option value="Jueves">Jueves</option>
+                <option value="Viernes">Viernes</option>
+              </select>
+              <small class="text-muted">Mantén presionada la tecla Ctrl para seleccionar múltiples días</small>
+            </div>
+
+            <!-- Descripción -->
+            <div class="mb-3">
+              <label class="form-label">Descripción del caso/refuerzo *</label>
+              <textarea id="caseDescription" class="form-control" rows="4" 
+                        placeholder="Describa detalladamente la situación del estudiante, áreas que necesita refuerzo, observaciones importantes..." 
+                        required></textarea>
+            </div>
+
+            <!-- Tipo de Atención -->
+            <div class="mb-3">
+              <label class="form-label">Tipo de atención requerida</label>
+              <select id="attentionType" class="form-select">
+                <option value="">Seleccionar tipo...</option>
+                <option value="Refuerzo académico">Refuerzo académico</option>
+                <option value="Evaluación psicopedagógica">Evaluación psicopedagógica</option>
+                <option value="Seguimiento personalizado">Seguimiento personalizado</option>
+                <option value="Adecuación curricular">Adecuación curricular</option>
+                <option value="Orientación">Orientación</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            <!-- Urgencia -->
+            <div class="mb-3">
+              <label class="form-label">Nivel de urgencia</label>
+              <select id="urgencyLevel" class="form-select">
+                <option value="Baja">Baja</option>
+                <option value="Media" selected>Media</option>
+                <option value="Alta">Alta</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="alert alert-info">
+            <small><i class="fas fa-info-circle"></i> Todos los campos marcados con * son obligatorios. La solicitud será revisada por el equipo PIE.</small>
+          </div>
+
+          <button class="btn btn-success w-100" type="submit">
+            <i class="fas fa-paper-plane"></i> Enviar Solicitud
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Proyecto Colaborativo -->
+<div class="modal fade" id="collaborativeProjectModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Crear Proyecto Colaborativo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="collaborativeProjectForm">
+          <div class="mb-3">
+            <label class="form-label">Nombre del Proyecto *</label>
+            <input type="text" id="projectName" class="form-control" required>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Fecha de Inicio *</label>
+                <input type="date" id="projectStartDate" class="form-control" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Duración (semanas) *</label>
+                <input type="number" id="projectDuration" class="form-control" min="1" required>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Curso/Nivel *</label>
+            <input type="text" id="projectGrade" class="form-control" placeholder="Ej: 4°A, 7°B" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Asignatura *</label>
+            <select id="projectSubject" class="form-select" required>
+              <option value="">Seleccionar asignatura...</option>
+              <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
+              <option value="Matemáticas">Matemáticas</option>
+              <option value="Historia">Historia</option>
+              <option value="Ciencias">Ciencias</option>
+              <option value="Inglés">Inglés</option>
+              <option value="Arte">Arte</option>
+              <option value="Música">Música</option>
+              <option value="Educación Física">Educación Física</option>
+              <option value="Tecnología">Tecnología</option>
+              <option value="Otra">Otra</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Objetivo de la Sesión Colaborativa *</label>
+            <textarea id="projectObjective" class="form-control" rows="3" required></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Estrategias DUA/Diversificación</label>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="strategyMultipleMeans">
+              <label class="form-check-label" for="strategyMultipleMeans">
+                Múltiples medios de representación
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="strategyMultipleAction">
+              <label class="form-check-label" for="strategyMultipleAction">
+                Múltiples medios de acción y expresión
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="strategyMultipleEngagement">
+              <label class="form-check-label" for="strategyMultipleEngagement">
+                Múltiples medios de compromiso
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="strategyDifferentiation">
+              <label class="form-check-label" for="strategyDifferentiation">
+                Diferenciación de contenido
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="strategyScaffolding">
+              <label class="form-check-label" for="strategyScaffolding">
+                Andamiaje educativo
+              </label>
+            </div>
+          </div>
+
+          <div class="alert alert-info">
+            <small><i class="fas fa-info-circle"></i> Los campos marcados con * son obligatorios.</small>
+          </div>
+
+          <button class="btn btn-warning w-100" type="submit">
+            <i class="fas fa-plus-circle"></i> Crear Proyecto
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
