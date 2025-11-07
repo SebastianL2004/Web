@@ -1036,3 +1036,350 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' }[c])
   );
 }
+
+// ------------------ SISTEMA DE COMENTARIOS DIRECTOR → PROFESOR ------------------
+
+// Función para cargar proyectos colaborativos del DIRECTOR con opción de comentar
+function loadCollaborativeProjectsForDirector() {
+    const el = document.getElementById("collaborativeProjectsDirector");
+    
+    db.collection("collaborativeProjects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            el.innerHTML = "";
+            
+            if (snap.empty) {
+                el.innerHTML = "<p>No hay proyectos colaborativos</p>";
+                return;
+            }
+            
+            snap.forEach(doc => {
+                const project = { id: doc.id, ...doc.data() };
+                const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+                const endDate = project.startDate && project.duration ? 
+                    new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+                
+                el.innerHTML += `
+                    <div class="collaborative-project-item">
+                        <div class="collaborative-project-header">
+                            <div class="collaborative-project-title">
+                                ${escapeHtml(project.name)}
+                            </div>
+                            <span class="badge bg-warning">Proyecto</span>
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
+                            <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
+                            <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Inicio:</strong> ${startDate} | 
+                            <strong>Duración:</strong> ${project.duration} semanas | 
+                            <strong>Fin estimado:</strong> ${endDate}
+                        </div>
+                        <div class="collaborative-project-objective">
+                            <strong>Objetivo:</strong> ${escapeHtml(project.objective)}
+                        </div>
+                        ${project.strategies && project.strategies.length > 0 ? `
+                            <div class="collaborative-project-strategies">
+                                <strong>Estrategias:</strong>
+                                ${project.strategies.map(strategy => `<span class="strategy-tag">${escapeHtml(strategy)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <!-- SECCIÓN DE COMENTARIOS DEL DIRECTOR -->
+                        <div class="director-comments-section mt-4">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-comment-dots"></i> Comentarios del Director
+                                        <span class="badge bg-light text-primary ms-2" id="commentCount-${project.id}">
+                                            ${project.directorComments ? project.directorComments.length : 0}
+                                        </span>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="directorComments-${project.id}" class="mb-3">
+                                        <div class="loading"></div>
+                                    </div>
+                                    
+                                    <!-- Formulario para nuevo comentario (solo visible para director) -->
+                                    <div class="new-director-comment">
+                                        <textarea class="form-control" id="newDirectorComment-${project.id}" 
+                                                placeholder="Escribe tu comentario o retroalimentación para el profesor..." 
+                                                rows="3"></textarea>
+                                        <button class="btn btn-primary btn-sm mt-2" onclick="addDirectorComment('${project.id}')">
+                                            <i class="fas fa-paper-plane"></i> Enviar Comentario
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Cargar comentarios después de crear el elemento
+                setTimeout(() => loadDirectorComments(project.id), 100);
+            });
+        });
+}
+
+// Función para cargar comentarios del director
+function loadDirectorComments(projectId) {
+    const commentsBox = document.getElementById(`directorComments-${projectId}`);
+    if (!commentsBox) return;
+
+    db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
+        const project = doc.data();
+        const comments = project.directorComments || [];
+
+        // Actualizar contador
+        const commentCount = document.getElementById(`commentCount-${projectId}`);
+        if (commentCount) {
+            commentCount.textContent = comments.length;
+        }
+
+        if (!comments.length) {
+            commentsBox.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="fas fa-comments fa-2x mb-2"></i>
+                    <p>No hay comentarios aún.<br>Se el primero en comentar este proyecto.</p>
+                </div>
+            `;
+            return;
+        }
+
+        commentsBox.innerHTML = comments.sort((a, b) => b.date.seconds - a.date.seconds)
+            .map(comment => `
+                <div class="director-comment-item">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
+                            <small class="text-muted ms-2">(Director)</small>
+                        </div>
+                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
+                    </div>
+                    <div class="comment-text bg-light p-3 rounded">${escapeHtml(comment.text)}</div>
+                    ${comment.author === currentUser.uid ? `
+                        <div class="text-end mt-2">
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDirectorComment('${projectId}', '${comment.date.seconds}')">
+                                <i class="fas fa-trash"></i> Eliminar
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join("");
+    });
+}
+
+// Función para que el director agregue un comentario
+async function addDirectorComment(projectId) {
+    if (currentUser.role !== 'director') {
+        alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
+        return;
+    }
+
+    const textElement = document.getElementById(`newDirectorComment-${projectId}`);
+    const text = textElement.value.trim();
+    
+    if (!text) {
+        alert("Por favor, escribe un comentario antes de enviar.");
+        return;
+    }
+
+    try {
+        const comment = {
+            author: currentUser.uid,
+            authorName: currentUser.name,
+            text: text,
+            date: firebase.firestore.Timestamp.now(),
+            role: 'director'
+        };
+
+        await db.collection("collaborativeProjects").doc(projectId).update({
+            directorComments: firebase.firestore.FieldValue.arrayUnion(comment)
+        });
+
+        textElement.value = "";
+        
+        // Mostrar notificación de éxito
+        showNotification('✅ Comentario agregado correctamente', 'success');
+        
+    } catch (err) {
+        console.error(err);
+        alert("❌ Error al agregar comentario: " + err.message);
+    }
+}
+
+// Función para eliminar comentario del director
+async function deleteDirectorComment(projectId, commentTimestamp) {
+    if (!confirm("¿Estás seguro de que quieres eliminar este comentario?")) return;
+
+    try {
+        const doc = await db.collection("collaborativeProjects").doc(projectId).get();
+        const project = doc.data();
+        const comments = project.directorComments || [];
+        
+        const commentToDelete = comments.find(comment => 
+            comment.date.seconds.toString() === commentTimestamp
+        );
+
+        if (!commentToDelete) {
+            alert("Comentario no encontrado.");
+            return;
+        }
+
+        if (commentToDelete.author !== currentUser.uid) {
+            alert("Solo puedes eliminar tus propios comentarios.");
+            return;
+        }
+
+        await db.collection("collaborativeProjects").doc(projectId).update({
+            directorComments: firebase.firestore.FieldValue.arrayRemove(commentToDelete)
+        });
+
+        showNotification('✅ Comentario eliminado correctamente', 'success');
+        
+    } catch (err) {
+        console.error(err);
+        alert("❌ Error al eliminar comentario: " + err.message);
+    }
+}
+
+// Función para cargar proyectos colaborativos del PROFESOR (con comentarios del director)
+function loadMyCollaborativeProjects() {
+    const el = document.getElementById("myCollaborativeProjects");
+    
+    db.collection("collaborativeProjects")
+        .where("createdBy", "==", currentUser.uid)
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            el.innerHTML = "";
+            
+            if (snap.empty) {
+                el.innerHTML = "<p>No has creado proyectos colaborativos aún</p>";
+                return;
+            }
+            
+            snap.forEach(doc => {
+                const project = { id: doc.id, ...doc.data() };
+                const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+                const endDate = project.startDate && project.duration ? 
+                    new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+                
+                // Contar comentarios del director
+                const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
+                
+                el.innerHTML += `
+                    <div class="collaborative-project-item">
+                        <div class="collaborative-project-header">
+                            <div class="collaborative-project-title">
+                                ${escapeHtml(project.name)}
+                            </div>
+                            <span class="badge bg-warning">Mi Proyecto</span>
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
+                            <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Inicio:</strong> ${startDate} | 
+                            <strong>Duración:</strong> ${project.duration} semanas
+                        </div>
+                        
+                        <!-- COMENTARIOS DEL DIRECTOR (SOLO VISUALIZACIÓN PARA PROFESOR) -->
+                        ${directorCommentsCount > 0 ? `
+                            <div class="director-feedback-section mt-3">
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-comment-check"></i> Comentarios del Director
+                                            <span class="badge bg-light text-success ms-2">${directorCommentsCount}</span>
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="teacherViewDirectorComments-${project.id}">
+                                            <div class="loading"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="text-center text-muted mt-3">
+                                <i class="fas fa-comment-slash"></i>
+                                <p>El director aún no ha comentado este proyecto</p>
+                            </div>
+                        `}
+                    </div>
+                `;
+
+                // Cargar comentarios del director para vista del profesor
+                if (directorCommentsCount > 0) {
+                    setTimeout(() => loadTeacherViewDirectorComments(project.id), 100);
+                }
+            });
+        });
+}
+
+// Función para cargar comentarios del director en la vista del PROFESOR
+function loadTeacherViewDirectorComments(projectId) {
+    const commentsBox = document.getElementById(`teacherViewDirectorComments-${projectId}`);
+    if (!commentsBox) return;
+
+    db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
+        const project = doc.data();
+        const comments = project.directorComments || [];
+
+        if (!comments.length) {
+            commentsBox.innerHTML = "<p class='text-muted'>No hay comentarios del director.</p>";
+            return;
+        }
+
+        commentsBox.innerHTML = comments.sort((a, b) => b.date.seconds - a.date.seconds)
+            .map(comment => `
+                <div class="director-comment-teacher-view">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
+                            <small class="text-muted ms-2">(Director)</small>
+                        </div>
+                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
+                    </div>
+                    <div class="comment-text bg-light p-3 rounded border-start border-success border-3">
+                        ${escapeHtml(comment.text)}
+                    </div>
+                </div>
+            `).join("");
+    });
+}
+
+// Función auxiliar para notificaciones
+function showNotification(message, type = 'info') {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-info';
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remover después de 4 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 4000);
+}
+
+// Actualizar la función showTeacherView para cargar proyectos colaborativos
+function showTeacherView() {
+    hideAllViews();
+    document.getElementById("mainContent").style.display = "block";
+    document.getElementById("teacherView").style.display = "block";
+    loadMyProjects();
+    loadMyPieRequests();
+    loadMyCollaborativeProjects(); // ← AGREGAR ESTA LÍNEA
+}
