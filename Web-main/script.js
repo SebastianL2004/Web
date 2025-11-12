@@ -18,16 +18,29 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
 
 // ------------------ GLOBAL ------------------
 let currentUser = null;
-const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
-const registerModal = new bootstrap.Modal(document.getElementById('registerModal'));
+let loginModal, registerModal;
+
+// Estado global para gestión de vistas
+let teacherViewState = {
+    currentDetailView: null, // 'pie-request' | 'collaborative-project' | null
+    currentDetailId: null
+};
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Inicializar modales después de que el DOM esté listo
+  loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+  registerModal = new bootstrap.Modal(document.getElementById('registerModal'));
+  
   document.getElementById("mainContent").style.display = "none";
   document.getElementById("directorView").style.display = "none";
   document.getElementById("teacherView").style.display = "none";
   document.getElementById("assistantView").style.display = "none";
 
-  loginModal.show();
+  // Mostrar modal de login después de un breve delay
+  setTimeout(() => {
+    loginModal.show();
+  }, 500);
+  
   setupFormListeners();
   auth.onAuthStateChanged(onAuthStateChanged);
 });
@@ -59,11 +72,11 @@ function setupFormListeners() {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      alert('Usuario registrado. Inicia sesión.');
+      alert('✅ Usuario registrado correctamente. Ya puedes iniciar sesión.');
       registerModal.hide();
-      loginModal.show();
+      setTimeout(() => loginModal.show(), 300);
     } catch (err) {
-      alert('Error al registrar: ' + err.message);
+      alert('❌ Error al registrar: ' + err.message);
     }
   });
 
@@ -72,7 +85,7 @@ function setupFormListeners() {
   document.getElementById('collaborativeProjectForm').addEventListener('submit', handleCollaborativeProject);
 }
 
-// ------------------ AUTH ------------------
+// ------------------ AUTH CORREGIDO ------------------
 async function onAuthStateChanged(user) {
   if (user) {
     const userDoc = await db.collection('users').doc(user.uid).get();
@@ -86,20 +99,51 @@ async function onAuthStateChanged(user) {
     document.getElementById('username').textContent = `Bienvenido, ${currentUser.name}`;
     document.getElementById('logoutBtn').style.display = 'inline';
 
-    loginModal.hide();
+    // Cerrar modal de login y limpiar backdrop
+    if (loginModal) {
+      loginModal.hide();
+      
+      // Remover el backdrop manualmente
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      backdrops.forEach(backdrop => {
+        backdrop.remove();
+      });
+      
+      // Habilitar el scroll del body
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = 'auto';
+      document.body.style.paddingRight = '0';
+    }
+
     setPresenceOnline(user.uid);
 
     // Asignar vista según rol
     if (currentUser.role === 'director') showDirectorView();
     else if (currentUser.role === 'asistente') showAssistantView();
-    else showTeacherView(); // Para profesores y cualquier otro rol
+    else showTeacherView();
 
   } else {
     currentUser = null;
     document.getElementById('username').textContent = 'No autenticado';
     document.getElementById('logoutBtn').style.display = 'none';
-    loginModal.show();
+    
+    // Mostrar modal de login
     hideAllViews();
+    
+    // Limpiar cualquier backdrop residual
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(backdrop => {
+      backdrop.remove();
+    });
+    
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = 'auto';
+    
+    setTimeout(() => {
+      if (loginModal) {
+        loginModal.show();
+      }
+    }, 300);
   }
 }
 
@@ -118,7 +162,7 @@ function setPresenceOnline(uid) {
   });
 }
 
-// ------------------ DIRECTOR VIEW ------------------
+// ------------------ DIRECTOR VIEW MEJORADA ------------------
 function showDirectorView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
@@ -132,10 +176,19 @@ function loadOnlineTeachersForDirector() {
   const el = document.getElementById("onlineTeachersDirector");
   el.innerHTML = "<div class='loading'></div>";
 
-  // Obtener solo usuarios profesores
   db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
     el.innerHTML = "";
     let hasOnlineTeachers = false;
+    
+    if (snap.empty) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-users-slash"></i>
+          <p>No hay docentes registrados</p>
+        </div>
+      `;
+      return;
+    }
     
     snap.forEach(doc => {
       const u = { uid: doc.id, ...doc.data() };
@@ -145,25 +198,26 @@ function loadOnlineTeachersForDirector() {
           hasOnlineTeachers = true;
           el.innerHTML += `
             <div class="teacher-status-item">
-              <span class="dot dot-online"></span>
-              <div class="teacher-info">
-                <span class="teacher-name">${escapeHtml(u.name)}</span>
-                <span class="teacher-role">Profesor</span>
+              <div class="d-flex align-items-center">
+                <span class="dot dot-online me-3"></span>
+                <div class="teacher-info">
+                  <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
+                  <span class="teacher-role small text-muted">Profesor conectado</span>
+                </div>
               </div>
             </div>`;
         }
         
-        // Si no hay profesores online después de procesar todos
         if (!hasOnlineTeachers && el.innerHTML === "") {
-          el.innerHTML = "<p>No hay docentes conectados</p>";
+          el.innerHTML = `
+            <div class="empty-state">
+              <i class="fas fa-wifi-slash"></i>
+              <p>No hay docentes conectados</p>
+            </div>
+          `;
         }
       });
     });
-    
-    // Si no hay profesores en la base de datos
-    if (snap.empty) {
-      el.innerHTML = "<p>No hay docentes registrados</p>";
-    }
   });
 }
 
@@ -176,7 +230,12 @@ function loadPieRequestsForDirector() {
       el.innerHTML = "";
       
       if (snap.empty) {
-        el.innerHTML = "<p>No hay solicitudes pendientes</p>";
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-clock"></i>
+            <p>No hay solicitudes pendientes</p>
+          </div>
+        `;
         return;
       }
       
@@ -223,65 +282,25 @@ function loadPieRequestsForDirector() {
     });
 }
 
-function loadCollaborativeProjectsForDirector() {
-  const el = document.getElementById("collaborativeProjectsDirector");
-  
-  db.collection("collaborativeProjects")
-    .orderBy("createdAt", "desc")
-    .onSnapshot(snap => {
-      el.innerHTML = "";
-      
-      if (snap.empty) {
-        el.innerHTML = "<p>No hay proyectos colaborativos</p>";
-        return;
-      }
-      
-      snap.forEach(doc => {
-        const project = { id: doc.id, ...doc.data() };
-        const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
-        const endDate = project.startDate && project.duration ? 
-          new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
-        
-        el.innerHTML += `
-          <div class="collaborative-project-item">
-            <div class="collaborative-project-header">
-              <div class="collaborative-project-title">
-                ${escapeHtml(project.name)}
-              </div>
-              <span class="badge bg-warning">Proyecto</span>
-            </div>
-            <div class="collaborative-project-meta">
-              <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
-              <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
-              <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
-            </div>
-            <div class="collaborative-project-meta">
-              <strong>Inicio:</strong> ${startDate} | 
-              <strong>Duración:</strong> ${project.duration} semanas | 
-              <strong>Fin estimado:</strong> ${endDate}
-            </div>
-            <div class="collaborative-project-objective">
-              <strong>Objetivo:</strong> ${escapeHtml(project.objective)}
-            </div>
-            ${project.strategies && project.strategies.length > 0 ? `
-              <div class="collaborative-project-strategies">
-                <strong>Estrategias:</strong>
-                ${project.strategies.map(strategy => `<span class="strategy-tag">${escapeHtml(strategy)}</span>`).join('')}
-              </div>
-            ` : ''}
-          </div>
-        `;
-      });
-    });
-}
-
-// ------------------ TEACHER VIEW ------------------
+// ------------------ TEACHER VIEW MEJORADA ------------------
 function showTeacherView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
   document.getElementById("teacherView").style.display = "block";
+  
+  // Resetear estado de vista
+  teacherViewState.currentDetailView = null;
+  teacherViewState.currentDetailId = null;
+  
+  // Cargar datos con nuevo layout
   loadMyProjects();
   loadMyPieRequests();
+  loadMyCollaborativeProjects();
+  setupTeacherViewInteractions();
+}
+
+function setupTeacherViewInteractions() {
+  // Las interacciones se manejan directamente en los onclick de los elementos
 }
 
 function hideAllViews() {
@@ -292,21 +311,33 @@ function hideAllViews() {
 }
 
 function loadMyProjects() {
+  const el = document.getElementById("projectsList");
+  
   db.collection("projects").where("uploadedBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
-      const el = document.getElementById("projectsList");
       el.innerHTML = "";
       if (snap.empty) {
-        el.innerHTML = "<p>No has subido contenido aún</p>";
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-folder-open"></i>
+            <p>No has subido contenido aún</p>
+          </div>
+        `;
         return;
       }
       snap.forEach(doc => {
         const p = { id: doc.id, ...doc.data() };
+        const uploadDate = p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+        
         el.innerHTML += `
           <div class="project-item" onclick="viewProject('${p.id}')">
-            <h6>${escapeHtml(p.title)}</h6>
-            <small>${escapeHtml(p.subject)}</small>
+            <div class="d-flex justify-content-between align-items-start">
+              <h6>${escapeHtml(p.title)}</h6>
+              <small class="text-muted">${uploadDate}</small>
+            </div>
+            <small class="text-muted">${escapeHtml(p.subject)}</small>
+            <p class="mt-2 small">${escapeHtml(p.description.substring(0, 100))}${p.description.length > 100 ? '...' : ''}</p>
           </div>`;
       });
     });
@@ -322,7 +353,12 @@ function loadMyPieRequests() {
       el.innerHTML = "";
       
       if (snap.empty) {
-        el.innerHTML = "<p>No has realizado solicitudes de hora con PIE</p>";
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-calendar-times"></i>
+            <p>No has realizado solicitudes PIE</p>
+          </div>
+        `;
         return;
       }
       
@@ -330,43 +366,283 @@ function loadMyPieRequests() {
         const request = { id: doc.id, ...doc.data() };
         const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
         
+        // Determinar si tiene comentarios del director
+        const hasDirectorComments = request.directorComments && request.directorComments.length > 0;
+        
         el.innerHTML += `
-          <div class="pie-request-item">
-            <div class="pie-request-header">
-              <div class="pie-request-student">
-                ${escapeHtml(request.studentName)} - ${escapeHtml(request.studentGrade)}
+          <div class="pie-request-item-clickable ${hasDirectorComments ? 'has-director-comments' : ''}" 
+               onclick="showPieRequestDetail('${request.id}')">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <strong>${escapeHtml(request.studentName)}</strong>
+                <small class="d-block text-muted">${escapeHtml(request.studentGrade)}</small>
               </div>
-              <span class="badge badge-${request.status}">${request.status}</span>
+              <span class="pie-request-status status-${request.status}">${request.status}</span>
             </div>
-            <div class="pie-request-meta">
-              <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)} | 
-              <strong>Fecha y Hora:</strong> ${request.formattedDate || 'No especificada'} ${request.formattedTime || ''}
-            </div>
-            <div class="pie-request-meta">
-              <strong>Tipo de atención:</strong> ${escapeHtml(request.attentionType || 'No especificado')} | 
-              <strong>Urgencia:</strong> <span class="badge ${getUrgencyBadgeClass(request.urgencyLevel)}">${escapeHtml(request.urgencyLevel || 'Media')}</span>
-            </div>
-            <div class="pie-request-description">
-              <strong>Descripción:</strong> ${escapeHtml(request.caseDescription)}
-            </div>
-            <div class="pie-request-meta">
-              <strong>Días alternativos:</strong> ${request.preferredDays && request.preferredDays.length > 0 ? request.preferredDays.join(', ') : 'No especificados'} | 
-              <strong>Fecha solicitud:</strong> ${requestDate}
-            </div>
-            <div class="pie-request-meta">
+            <div class="small">
+              <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)}<br>
+              <strong>Fecha:</strong> ${request.formattedDate || 'No especificada'}<br>
               <strong>Estado:</strong> 
-              ${request.status === 'pendiente' ? '🟡 Pendiente de revisión' : 
-                request.status === 'aprobada' ? '🟢 Aprobada - Esperando confirmación' : 
+              ${request.status === 'pendiente' ? '🟡 Pendiente' : 
+                request.status === 'aprobada' ? '🟢 Aprobada' : 
                 request.status === 'rechazada' ? '🔴 Rechazada' : 
                 request.status === 'completada' ? '✅ Completada' : '⚪ ' + request.status}
             </div>
+            ${hasDirectorComments ? `
+              <div class="mt-2">
+                <small class="text-info"><i class="fas fa-comment"></i> Tiene comentarios del director</small>
+              </div>
+            ` : ''}
           </div>
         `;
       });
     });
 }
 
-// ------------------ ASSISTANT VIEW ------------------
+// ===== FUNCIONES MEJORADAS PARA VISTAS DETALLADAS =====
+
+function showPieRequestDetail(requestId) {
+  const el = document.getElementById("myPieRequests");
+  
+  db.collection("pieRequests").doc(requestId).get().then(doc => {
+    if (!doc.exists) return;
+    
+    const request = { id: doc.id, ...doc.data() };
+    const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+    
+    el.innerHTML = `
+      <div class="pie-request-detail-view">
+        <div class="pie-request-detail-header">
+          <h5>Solicitud PIE - ${escapeHtml(request.studentName)}</h5>
+          <button class="btn btn-secondary back-button" onclick="loadMyPieRequests()">
+            <i class="fas fa-arrow-left"></i> Volver
+          </button>
+        </div>
+        
+        <div class="pie-request-info">
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>Estudiante:</strong> ${escapeHtml(request.studentName)}</p>
+              <p><strong>Curso:</strong> ${escapeHtml(request.studentGrade)}</p>
+              <p><strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)}</p>
+            </div>
+            <div class="col-md-6">
+              <p><strong>Estado:</strong> <span class="pie-request-status status-${request.status}">${request.status}</span></p>
+              <p><strong>Fecha solicitada:</strong> ${request.formattedDate || 'No especificada'}</p>
+              <p><strong>Hora:</strong> ${request.formattedTime || 'No especificada'}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pie-request-info">
+          <h6>Datos del Apoderado</h6>
+          <p><strong>Nombre:</strong> ${escapeHtml(request.parentName)}</p>
+          <p><strong>Teléfono:</strong> ${escapeHtml(request.parentPhone)}</p>
+          <p><strong>Email:</strong> ${escapeHtml(request.parentEmail)}</p>
+        </div>
+        
+        <div class="pie-request-info">
+          <h6>Detalles de la Solicitud</h6>
+          <p><strong>Tipo de atención:</strong> ${escapeHtml(request.attentionType || 'No especificado')}</p>
+          <p><strong>Nivel de urgencia:</strong> <span class="badge ${getUrgencyBadgeClass(request.urgencyLevel)}">${escapeHtml(request.urgencyLevel || 'Media')}</span></p>
+          <p><strong>Días alternativos:</strong> ${request.preferredDays && request.preferredDays.length > 0 ? request.preferredDays.join(', ') : 'No especificados'}</p>
+          <p><strong>Descripción:</strong></p>
+          <div class="alert alert-light">${escapeHtml(request.caseDescription)}</div>
+        </div>
+        
+        <div class="pie-request-info">
+          <p><strong>Fecha de solicitud:</strong> ${requestDate}</p>
+          <p><strong>Solicitado por:</strong> ${escapeHtml(request.requestedByName)}</p>
+        </div>
+        
+        <!-- Comentarios del Director -->
+        ${request.directorComments && request.directorComments.length > 0 ? `
+          <div class="director-comments-section mt-4">
+            <div class="card border-primary">
+              <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                  <i class="fas fa-comment-dots"></i> Comentarios del Director
+                  <span class="badge bg-light text-primary ms-2">${request.directorComments.length}</span>
+                </h6>
+              </div>
+              <div class="card-body">
+                ${request.directorComments.sort((a, b) => b.date.seconds - a.date.seconds)
+                  .map(comment => `
+                    <div class="director-comment-teacher-view mb-3">
+                      <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                          <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
+                          <small class="text-muted ms-2">(Director)</small>
+                        </div>
+                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
+                      </div>
+                      <div class="comment-text bg-light p-3 rounded border-start border-primary border-3">
+                        ${escapeHtml(comment.text)}
+                      </div>
+                    </div>
+                  `).join('')}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+    
+    teacherViewState.currentDetailView = 'pie-request';
+    teacherViewState.currentDetailId = requestId;
+  });
+}
+
+// ===== PROYECTOS COLABORATIVOS MEJORADOS =====
+
+function loadMyCollaborativeProjects() {
+  const el = document.getElementById("myCollaborativeProjects");
+  
+  db.collection("collaborativeProjects")
+    .where("createdBy", "==", currentUser.uid)
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      el.innerHTML = "";
+      
+      if (snap.empty) {
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-users"></i>
+            <p>No has creado proyectos colaborativos aún</p>
+          </div>
+        `;
+        return;
+      }
+      
+      snap.forEach(doc => {
+        const project = { id: doc.id, ...doc.data() };
+        const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+        
+        // Contar comentarios del director
+        const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
+        
+        el.innerHTML += `
+          <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''}" 
+               onclick="showCollaborativeProjectDetail('${project.id}')">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <strong>${escapeHtml(project.name)}</strong>
+                <small class="d-block text-muted">${escapeHtml(project.teacher)} - ${escapeHtml(project.subject)}</small>
+              </div>
+              <span class="badge bg-warning">Proyecto</span>
+            </div>
+            <div class="small">
+              <strong>Inicio:</strong> ${startDate}<br>
+              <strong>Duración:</strong> ${project.duration} semanas<br>
+              <strong>Docente:</strong> ${escapeHtml(project.teacher)}<br>
+              <strong>Objetivo:</strong> ${escapeHtml(project.objective.substring(0, 80))}${project.objective.length > 80 ? '...' : ''}
+            </div>
+            ${directorCommentsCount > 0 ? `
+              <div class="mt-2">
+                <small class="text-info"><i class="fas fa-comment"></i> ${directorCommentsCount} comentario(s) del director</small>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+    });
+}
+
+function showCollaborativeProjectDetail(projectId) {
+  const el = document.getElementById("myCollaborativeProjects");
+  
+  db.collection("collaborativeProjects").doc(projectId).get().then(doc => {
+    if (!doc.exists) return;
+    
+    const project = { id: doc.id, ...doc.data() };
+    const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+    const endDate = project.startDate && project.duration ? 
+      new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+    
+    el.innerHTML = `
+      <div class="project-collaborative-detail-view">
+        <div class="project-collaborative-header">
+          <h5>${escapeHtml(project.name)}</h5>
+          <button class="btn btn-secondary back-button" onclick="loadMyCollaborativeProjects()">
+            <i class="fas fa-arrow-left"></i> Volver
+          </button>
+        </div>
+        
+        <div class="project-collaborative-info">
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>Docente Colaborador:</strong> ${escapeHtml(project.teacher)}</p>
+              <p><strong>Asignatura:</strong> ${escapeHtml(project.subject)}</p>
+              <p><strong>Fecha de inicio:</strong> ${startDate}</p>
+            </div>
+            <div class="col-md-6">
+              <p><strong>Duración:</strong> ${project.duration} semanas</p>
+              <p><strong>Fecha fin estimada:</strong> ${endDate}</p>
+              <p><strong>Creado por:</strong> ${escapeHtml(project.createdByName)}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="project-collaborative-info">
+          <h6>Objetivo del Proyecto</h6>
+          <div class="alert alert-light">${escapeHtml(project.objective)}</div>
+        </div>
+        
+        ${project.strategies && project.strategies.length > 0 ? `
+          <div class="project-collaborative-info">
+            <h6>Estrategias Implementadas</h6>
+            <div class="strategies-container">
+              ${project.strategies.map(strategy => `
+                <span class="strategy-tag">${escapeHtml(strategy)}</span>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        <!-- Comentarios del Director -->
+        ${project.directorComments && project.directorComments.length > 0 ? `
+          <div class="director-comments-section mt-4">
+            <div class="card border-success">
+              <div class="card-header bg-success text-white">
+                <h6 class="mb-0">
+                  <i class="fas fa-comment-check"></i> Comentarios del Director
+                  <span class="badge bg-light text-success ms-2">${project.directorComments.length}</span>
+                </h6>
+              </div>
+              <div class="card-body">
+                ${project.directorComments.sort((a, b) => b.date.seconds - a.date.seconds)
+                  .map(comment => `
+                    <div class="director-comment-teacher-view mb-3">
+                      <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                          <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
+                          <small class="text-muted ms-2">(Director)</small>
+                        </div>
+                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
+                      </div>
+                      <div class="comment-text bg-light p-3 rounded border-start border-success border-3">
+                        ${escapeHtml(comment.text)}
+                      </div>
+                    </div>
+                  `).join('')}
+              </div>
+            </div>
+          </div>
+        ` : `
+          <div class="text-center text-muted mt-4 py-3">
+            <i class="fas fa-comment-slash fa-2x mb-2"></i>
+            <p>El director aún no ha comentado este proyecto</p>
+          </div>
+        `}
+      </div>
+    `;
+    
+    teacherViewState.currentDetailView = 'collaborative-project';
+    teacherViewState.currentDetailId = projectId;
+  });
+}
+
+// ------------------ ASISTENTE VIEW MEJORADA ------------------
 function showAssistantView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
@@ -380,10 +656,19 @@ function loadOnlineTeachersForAssistant() {
   const el = document.getElementById("onlineTeachersAssistant");
   el.innerHTML = "<div class='loading'></div>";
 
-  // Obtener solo usuarios profesores
   db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
     el.innerHTML = "";
     let hasOnlineTeachers = false;
+    
+    if (snap.empty) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-users-slash"></i>
+          <p>No hay docentes registrados</p>
+        </div>
+      `;
+      return;
+    }
     
     snap.forEach(doc => {
       const u = { uid: doc.id, ...doc.data() };
@@ -393,25 +678,26 @@ function loadOnlineTeachersForAssistant() {
           hasOnlineTeachers = true;
           el.innerHTML += `
             <div class="teacher-status-item">
-              <span class="dot dot-online"></span>
-              <div class="teacher-info">
-                <span class="teacher-name">${escapeHtml(u.name)}</span>
-                <span class="teacher-role">Profesor</span>
+              <div class="d-flex align-items-center">
+                <span class="dot dot-online me-3"></span>
+                <div class="teacher-info">
+                  <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
+                  <span class="teacher-role small text-muted">Profesor conectado</span>
+                </div>
               </div>
             </div>`;
         }
         
-        // Si no hay profesores online después de procesar todos
         if (!hasOnlineTeachers && el.innerHTML === "") {
-          el.innerHTML = "<p>No hay docentes conectados</p>";
+          el.innerHTML = `
+            <div class="empty-state">
+              <i class="fas fa-wifi-slash"></i>
+              <p>No hay docentes conectados</p>
+            </div>
+          `;
         }
       });
     });
-    
-    // Si no hay profesores en la base de datos
-    if (snap.empty) {
-      el.innerHTML = "<p>No hay docentes registrados</p>";
-    }
   });
 }
 
@@ -424,7 +710,12 @@ function loadPieRequestsForAssistant() {
       el.innerHTML = "";
       
       if (snap.empty) {
-        el.innerHTML = "<p>No hay solicitudes pendientes</p>";
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-clock"></i>
+            <p>No hay solicitudes pendientes</p>
+          </div>
+        `;
         return;
       }
       
@@ -488,7 +779,12 @@ function loadCollaborativeProjectsForAssistant() {
       el.innerHTML = "";
       
       if (snap.empty) {
-        el.innerHTML = "<p>No hay proyectos colaborativos</p>";
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-users"></i>
+            <p>No hay proyectos colaborativos</p>
+          </div>
+        `;
         return;
       }
       
@@ -498,17 +794,20 @@ function loadCollaborativeProjectsForAssistant() {
         const endDate = project.startDate && project.duration ? 
           new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
         
+        // Determinar si está completado
+        const isCompleted = project.status === 'completada';
+        
         el.innerHTML += `
-          <div class="collaborative-project-item">
+          <div class="collaborative-project-item ${isCompleted ? 'completed' : ''}">
             <div class="collaborative-project-header">
               <div class="collaborative-project-title">
                 ${escapeHtml(project.name)}
               </div>
-              <span class="badge bg-warning">Proyecto</span>
+              <span class="badge badge-${project.status || 'pendiente'}">${project.status || 'pendiente'}</span>
             </div>
             <div class="collaborative-project-meta">
               <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
-              <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
+              <strong>Docente:</strong> ${escapeHtml(project.teacher)} | 
               <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
             </div>
             <div class="collaborative-project-meta">
@@ -525,6 +824,19 @@ function loadCollaborativeProjectsForAssistant() {
                 ${project.strategies.map(strategy => `<span class="strategy-tag">${escapeHtml(strategy)}</span>`).join('')}
               </div>
             ` : ''}
+            <div class="pie-request-actions mt-3">
+              ${!isCompleted ? `
+                <button class="btn btn-sm btn-success" onclick="updateProjectStatus('${project.id}', 'aprobada')">Aprobar</button>
+                <button class="btn btn-sm btn-warning" onclick="updateProjectStatus('${project.id}', 'pendiente')">Pendiente</button>
+                <button class="btn btn-sm btn-danger" onclick="updateProjectStatus('${project.id}', 'rechazada')">Rechazar</button>
+                <button class="btn btn-sm btn-info" onclick="updateProjectStatus('${project.id}', 'completada')">Marcar Completada</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCollaborativeProject('${project.id}')">Eliminar</button>
+              ` : `
+                <span class="text-success"><i class="fas fa-check-circle"></i> Proyecto completado</span>
+                <button class="btn btn-sm btn-outline-warning ms-2" onclick="updateProjectStatus('${project.id}', 'pendiente')">Reabrir</button>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteCollaborativeProject('${project.id}')">Eliminar</button>
+              `}
+            </div>
           </div>
         `;
       });
@@ -581,11 +893,11 @@ async function handleContentUpload(e) {
 
     document.getElementById("uploadContentForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("uploadContentModal")).hide();
-    alert("✅ Archivo subido correctamente");
+    showNotification('✅ Archivo subido correctamente', 'success');
 
   } catch (err) {
     console.error(err);
-    alert("❌ Error al subir archivo: " + err.message);
+    showNotification('❌ Error al subir archivo: ' + err.message, 'error');
   }
 }
 
@@ -654,15 +966,15 @@ async function handlePieScheduleRequest(e) {
 
     document.getElementById("schedulePieForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("schedulePieModal")).hide();
-    alert("✅ Solicitud enviada correctamente. Será revisada por el equipo PIE.");
+    showNotification('✅ Solicitud enviada correctamente. Será revisada por el equipo PIE.', 'success');
 
   } catch (err) {
     console.error(err);
-    alert("❌ Error al enviar la solicitud: " + err.message);
+    showNotification('❌ Error al enviar la solicitud: ' + err.message, 'error');
   }
 }
 
-// ------------------ COLLABORATIVE PROJECT ------------------
+// ------------------ COLLABORATIVE PROJECT MEJORADO ------------------
 async function handleCollaborativeProject(e) {
   e.preventDefault();
 
@@ -675,9 +987,11 @@ async function handleCollaborativeProject(e) {
   const projectName = document.getElementById("projectName").value.trim();
   const projectStartDate = document.getElementById("projectStartDate").value;
   const projectDuration = document.getElementById("projectDuration").value;
-  const projectGrade = document.getElementById("projectGrade").value.trim();
+  const projectTeacher = document.getElementById("projectTeacher").value.trim();
   const projectSubject = document.getElementById("projectSubject").value;
   const projectObjective = document.getElementById("projectObjective").value.trim();
+  const projectFile = document.getElementById("projectFile").files[0];
+  const projectFileDescription = document.getElementById("projectFileDescription").value.trim();
 
   // Obtener estrategias seleccionadas
   const strategies = [];
@@ -698,32 +1012,78 @@ async function handleCollaborativeProject(e) {
   }
 
   // Validación básica
-  if (!projectName || !projectStartDate || !projectDuration || !projectGrade || !projectSubject || !projectObjective) {
+  if (!projectName || !projectStartDate || !projectDuration || !projectTeacher || !projectSubject || !projectObjective) {
     alert("Por favor, completa todos los campos obligatorios (marcados con *).");
     return;
   }
 
   try {
-    await db.collection("collaborativeProjects").add({
+    let fileURL = null;
+    let fileName = null;
+
+    // Subir archivo si existe
+    if (projectFile) {
+      const formData = new FormData();
+      formData.append("file", projectFile);
+      formData.append("upload_preset", "recursos_pie");
+      formData.append("folder", `proyectos/${currentUser.uid}`);
+      formData.append("resource_type", "auto");
+
+      const CLOUD_NAME = "dqnzla4mx";
+      
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      if (data.secure_url) {
+        fileURL = data.secure_url;
+        fileName = projectFile.name;
+      }
+    }
+
+    // Crear proyecto en Firestore
+    const projectData = {
       name: projectName,
       startDate: projectStartDate,
       duration: parseInt(projectDuration),
-      grade: projectGrade,
+      teacher: projectTeacher,
       subject: projectSubject,
       objective: projectObjective,
       strategies: strategies,
       createdBy: currentUser.uid,
       createdByName: currentUser.name,
+      status: "pendiente", // Estado inicial
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
 
+    // Agregar datos del archivo si se subió
+    if (fileURL) {
+      projectData.projectFile = {
+        url: fileURL,
+        name: fileName,
+        description: projectFileDescription,
+        uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+    }
+
+    await db.collection("collaborativeProjects").add(projectData);
+
+    // Limpiar formulario
     document.getElementById("collaborativeProjectForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("collaborativeProjectModal")).hide();
-    alert("✅ Proyecto colaborativo creado correctamente.");
+    
+    // Mostrar mensaje de éxito
+    const message = fileURL ? 
+      "✅ Proyecto colaborativo creado correctamente con archivo adjunto." :
+      "✅ Proyecto colaborativo creado correctamente.";
+    
+    showNotification(message, 'success');
 
   } catch (err) {
     console.error(err);
-    alert("❌ Error al crear el proyecto: " + err.message);
+    showNotification('❌ Error al crear el proyecto: ' + err.message, 'error');
   }
 }
 
@@ -739,9 +1099,27 @@ async function updatePieRequestStatus(requestId, status) {
     await db.collection("pieRequests").doc(requestId).update({
       status: status
     });
-    alert(`✅ Solicitud ${status} correctamente`);
+    showNotification(`✅ Solicitud ${status} correctamente`, 'success');
   } catch (err) {
-    alert("❌ Error al actualizar la solicitud: " + err.message);
+    showNotification('❌ Error al actualizar la solicitud: ' + err.message, 'error');
+  }
+}
+
+// ------------------ UPDATE PROJECT STATUS ------------------
+async function updateProjectStatus(projectId, status) {
+  // Verificar que solo los asistentes puedan cambiar estados
+  if (currentUser.role !== 'asistente') {
+    alert("Solo los asistentes PIE pueden modificar el estado de los proyectos");
+    return;
+  }
+  
+  try {
+    await db.collection("collaborativeProjects").doc(projectId).update({
+      status: status
+    });
+    showNotification(`✅ Proyecto ${status} correctamente`, 'success');
+  } catch (err) {
+    showNotification('❌ Error al actualizar el proyecto: ' + err.message, 'error');
   }
 }
 
@@ -757,9 +1135,27 @@ async function deletePieRequest(requestId) {
   
   try {
     await db.collection("pieRequests").doc(requestId).delete();
-    alert("✅ Solicitud eliminada correctamente");
+    showNotification('✅ Solicitud eliminada correctamente', 'success');
   } catch (err) {
-    alert("❌ Error al eliminar la solicitud: " + err.message);
+    showNotification('❌ Error al eliminar la solicitud: ' + err.message, 'error');
+  }
+}
+
+// ------------------ DELETE COLLABORATIVE PROJECT ------------------
+async function deleteCollaborativeProject(projectId) {
+  // Verificar que solo los asistentes puedan eliminar
+  if (currentUser.role !== 'asistente') {
+    alert("Solo los asistentes PIE pueden eliminar proyectos colaborativos");
+    return;
+  }
+  
+  if (!confirm("¿Estás seguro de que quieres eliminar este proyecto colaborativo? Esta acción no se puede deshacer.")) return;
+  
+  try {
+    await db.collection("collaborativeProjects").doc(projectId).delete();
+    showNotification('✅ Proyecto colaborativo eliminado correctamente', 'success');
+  } catch (err) {
+    showNotification('❌ Error al eliminar el proyecto: ' + err.message, 'error');
   }
 }
 
@@ -984,7 +1380,7 @@ async function addComment(id) {
 async function deleteProject(id) {
   if (!confirm("¿Eliminar?")) return;
   await db.collection("projects").doc(id).delete();
-  alert("Eliminado");
+  showNotification('✅ Proyecto eliminado correctamente', 'success');
 }
 
 async function editProject(id) {
@@ -995,13 +1391,14 @@ async function editProject(id) {
   const s = prompt("Nueva asignatura", p.subject);
   const d = prompt("Nueva descripción", p.description);
 
-  await db.collection("projects").doc(id).update({
-    title: t,
-    subject: s,
-    description: d
-  });
-
-  alert("Actualizado");
+  if (t && s && d) {
+    await db.collection("projects").doc(id).update({
+      title: t,
+      subject: s,
+      description: d
+    });
+    showNotification('✅ Proyecto actualizado correctamente', 'success');
+  }
 }
 
 // ------------------ NAVIGATION ------------------
@@ -1016,27 +1413,6 @@ function goBackToProjects() {
   }
 }
 
-// ------------------ UTILITY FUNCTIONS ------------------
-function getUrgencyBadgeClass(urgencyLevel) {
-  switch(urgencyLevel) {
-    case 'Alta':
-      return 'bg-danger';
-    case 'Media':
-      return 'bg-warning';
-    case 'Baja':
-      return 'bg-success';
-    default:
-      return 'bg-secondary';
-  }
-}
-
-function escapeHtml(s) {
-  if (!s) return "";
-  return String(s).replace(/[&<>"'`=\/]/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' }[c])
-  );
-}
-
 // ------------------ SISTEMA DE COMENTARIOS DIRECTOR → PROFESOR ------------------
 
 // Función para cargar proyectos colaborativos del DIRECTOR con opción de comentar
@@ -1049,7 +1425,12 @@ function loadCollaborativeProjectsForDirector() {
             el.innerHTML = "";
             
             if (snap.empty) {
-                el.innerHTML = "<p>No hay proyectos colaborativos</p>";
+                el.innerHTML = `
+                  <div class="empty-state">
+                    <i class="fas fa-users"></i>
+                    <p>No hay proyectos colaborativos</p>
+                  </div>
+                `;
                 return;
             }
             
@@ -1069,7 +1450,7 @@ function loadCollaborativeProjectsForDirector() {
                         </div>
                         <div class="collaborative-project-meta">
                             <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
-                            <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
+                            <strong>Docente:</strong> ${escapeHtml(project.teacher)} | 
                             <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
                         </div>
                         <div class="collaborative-project-meta">
@@ -1201,13 +1582,11 @@ async function addDirectorComment(projectId) {
         });
 
         textElement.value = "";
-        
-        // Mostrar notificación de éxito
         showNotification('✅ Comentario agregado correctamente', 'success');
         
     } catch (err) {
         console.error(err);
-        alert("❌ Error al agregar comentario: " + err.message);
+        showNotification('❌ Error al agregar comentario: ' + err.message, 'error');
     }
 }
 
@@ -1242,125 +1621,43 @@ async function deleteDirectorComment(projectId, commentTimestamp) {
         
     } catch (err) {
         console.error(err);
-        alert("❌ Error al eliminar comentario: " + err.message);
+        showNotification('❌ Error al eliminar comentario: ' + err.message, 'error');
     }
 }
 
-// Función para cargar proyectos colaborativos del PROFESOR (con comentarios del director)
-function loadMyCollaborativeProjects() {
-    const el = document.getElementById("myCollaborativeProjects");
-    
-    db.collection("collaborativeProjects")
-        .where("createdBy", "==", currentUser.uid)
-        .orderBy("createdAt", "desc")
-        .onSnapshot(snap => {
-            el.innerHTML = "";
-            
-            if (snap.empty) {
-                el.innerHTML = "<p>No has creado proyectos colaborativos aún</p>";
-                return;
-            }
-            
-            snap.forEach(doc => {
-                const project = { id: doc.id, ...doc.data() };
-                const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
-                const endDate = project.startDate && project.duration ? 
-                    new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
-                
-                // Contar comentarios del director
-                const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
-                
-                el.innerHTML += `
-                    <div class="collaborative-project-item">
-                        <div class="collaborative-project-header">
-                            <div class="collaborative-project-title">
-                                ${escapeHtml(project.name)}
-                            </div>
-                            <span class="badge bg-warning">Mi Proyecto</span>
-                        </div>
-                        <div class="collaborative-project-meta">
-                            <strong>Curso:</strong> ${escapeHtml(project.grade)} | 
-                            <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
-                        </div>
-                        <div class="collaborative-project-meta">
-                            <strong>Inicio:</strong> ${startDate} | 
-                            <strong>Duración:</strong> ${project.duration} semanas
-                        </div>
-                        
-                        <!-- COMENTARIOS DEL DIRECTOR (SOLO VISUALIZACIÓN PARA PROFESOR) -->
-                        ${directorCommentsCount > 0 ? `
-                            <div class="director-feedback-section mt-3">
-                                <div class="card border-success">
-                                    <div class="card-header bg-success text-white">
-                                        <h6 class="mb-0">
-                                            <i class="fas fa-comment-check"></i> Comentarios del Director
-                                            <span class="badge bg-light text-success ms-2">${directorCommentsCount}</span>
-                                        </h6>
-                                    </div>
-                                    <div class="card-body">
-                                        <div id="teacherViewDirectorComments-${project.id}">
-                                            <div class="loading"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ` : `
-                            <div class="text-center text-muted mt-3">
-                                <i class="fas fa-comment-slash"></i>
-                                <p>El director aún no ha comentado este proyecto</p>
-                            </div>
-                        `}
-                    </div>
-                `;
-
-                // Cargar comentarios del director para vista del profesor
-                if (directorCommentsCount > 0) {
-                    setTimeout(() => loadTeacherViewDirectorComments(project.id), 100);
-                }
-            });
-        });
+// ------------------ UTILITY FUNCTIONS ------------------
+function getUrgencyBadgeClass(urgencyLevel) {
+    switch(urgencyLevel) {
+        case 'Alta':
+            return 'bg-danger';
+        case 'Media':
+            return 'bg-warning';
+        case 'Baja':
+            return 'bg-success';
+        default:
+            return 'bg-secondary';
+    }
 }
 
-// Función para cargar comentarios del director en la vista del PROFESOR
-function loadTeacherViewDirectorComments(projectId) {
-    const commentsBox = document.getElementById(`teacherViewDirectorComments-${projectId}`);
-    if (!commentsBox) return;
-
-    db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
-        const project = doc.data();
-        const comments = project.directorComments || [];
-
-        if (!comments.length) {
-            commentsBox.innerHTML = "<p class='text-muted'>No hay comentarios del director.</p>";
-            return;
-        }
-
-        commentsBox.innerHTML = comments.sort((a, b) => b.date.seconds - a.date.seconds)
-            .map(comment => `
-                <div class="director-comment-teacher-view">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
-                            <small class="text-muted ms-2">(Director)</small>
-                        </div>
-                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
-                    </div>
-                    <div class="comment-text bg-light p-3 rounded border-start border-success border-3">
-                        ${escapeHtml(comment.text)}
-                    </div>
-                </div>
-            `).join("");
-    });
+function escapeHtml(s) {
+    if (!s) return "";
+    return String(s).replace(/[&<>"'`=\/]/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' }[c])
+    );
 }
 
 // Función auxiliar para notificaciones
 function showNotification(message, type = 'info') {
-    const alertClass = type === 'success' ? 'alert-success' : 'alert-info';
+    const alertClass = type === 'success' ? 'alert-success' : 
+                      type === 'error' ? 'alert-danger' : 'alert-info';
+    const icon = type === 'success' ? 'fa-check-circle' : 
+                type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+    
     const notification = document.createElement('div');
     notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
     notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
     notification.innerHTML = `
-        ${message}
+        <i class="fas ${icon} me-2"></i>${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     
@@ -1374,12 +1671,14 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
-// Actualizar la función showTeacherView para cargar proyectos colaborativos
-function showTeacherView() {
-    hideAllViews();
-    document.getElementById("mainContent").style.display = "block";
-    document.getElementById("teacherView").style.display = "block";
-    loadMyProjects();
-    loadMyPieRequests();
-    loadMyCollaborativeProjects(); // ← AGREGAR ESTA LÍNEA
+// Función auxiliar para formatear fechas
+function formatFirebaseTimestamp(timestamp) {
+    if (!timestamp || !timestamp.seconds) return "Fecha no disponible";
+    return new Date(timestamp.seconds * 1000).toLocaleDateString('es-CL', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
