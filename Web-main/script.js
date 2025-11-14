@@ -23,8 +23,12 @@ let loginModal, registerModal;
 // Estado global para gestión de vistas
 let teacherViewState = {
     currentDetailView: null, // 'pie-request' | 'collaborative-project' | null
-    currentDetailId: null
+    currentDetailId: null,
+    unsubscribeDetail: null // Para limpiar suscripciones
 };
+
+// Array global para almacenar estrategias seleccionadas en proyectos colaborativos
+let selectedStrategies = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   // Inicializar modales después de que el DOM esté listo
@@ -83,6 +87,11 @@ function setupFormListeners() {
   document.getElementById('uploadContentForm').addEventListener('submit', handleContentUpload);
   document.getElementById('schedulePieForm').addEventListener('submit', handlePieScheduleRequest);
   document.getElementById('collaborativeProjectForm').addEventListener('submit', handleCollaborativeProject);
+  
+  // Inicializar el formulario cuando se muestre el modal de proyectos colaborativos
+  document.getElementById('collaborativeProjectModal').addEventListener('show.bs.modal', function () {
+    initializeCollaborativeProjectForm();
+  });
 }
 
 // ------------------ AUTH CORREGIDO ------------------
@@ -279,6 +288,8 @@ function loadPieRequestsForDirector() {
           </div>
         `;
       });
+    }, error => {
+      console.error("Error en tiempo real de solicitudes PIE (director):", error);
     });
 }
 
@@ -288,9 +299,15 @@ function showTeacherView() {
   document.getElementById("mainContent").style.display = "block";
   document.getElementById("teacherView").style.display = "block";
   
+  // Limpiar suscripción anterior si existe
+  if (teacherViewState.unsubscribeDetail) {
+    teacherViewState.unsubscribeDetail();
+  }
+  
   // Resetear estado de vista
   teacherViewState.currentDetailView = null;
   teacherViewState.currentDetailId = null;
+  teacherViewState.unsubscribeDetail = null;
   
   // Cargar datos con nuevo layout
   loadMyProjects();
@@ -340,12 +357,15 @@ function loadMyProjects() {
             <p class="mt-2 small">${escapeHtml(p.description.substring(0, 100))}${p.description.length > 100 ? '...' : ''}</p>
           </div>`;
       });
+    }, error => {
+      console.error("Error en tiempo real de proyectos:", error);
     });
 }
 
 function loadMyPieRequests() {
   const el = document.getElementById("myPieRequests");
   
+  // Usar onSnapshot para actualización en tiempo real
   db.collection("pieRequests")
     .where("requestedBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
@@ -396,6 +416,8 @@ function loadMyPieRequests() {
           </div>
         `;
       });
+    }, error => {
+      console.error("Error en tiempo real de solicitudes PIE:", error);
     });
 }
 
@@ -404,7 +426,13 @@ function loadMyPieRequests() {
 function showPieRequestDetail(requestId) {
   const el = document.getElementById("myPieRequests");
   
-  db.collection("pieRequests").doc(requestId).get().then(doc => {
+  // Limpiar suscripción anterior si existe
+  if (teacherViewState.unsubscribeDetail) {
+    teacherViewState.unsubscribeDetail();
+  }
+  
+  // Usar onSnapshot para actualización en tiempo real
+  const unsubscribe = db.collection("pieRequests").doc(requestId).onSnapshot(doc => {
     if (!doc.exists) return;
     
     const request = { id: doc.id, ...doc.data() };
@@ -490,6 +518,11 @@ function showPieRequestDetail(requestId) {
     
     teacherViewState.currentDetailView = 'pie-request';
     teacherViewState.currentDetailId = requestId;
+    
+    // Guardar la función unsubscribe para limpiar cuando se salga de la vista
+    teacherViewState.unsubscribeDetail = unsubscribe;
+  }, error => {
+    console.error("Error en tiempo real de detalle de solicitud:", error);
   });
 }
 
@@ -498,6 +531,7 @@ function showPieRequestDetail(requestId) {
 function loadMyCollaborativeProjects() {
   const el = document.getElementById("myCollaborativeProjects");
   
+  // Usar onSnapshot para actualización en tiempo real
   db.collection("collaborativeProjects")
     .where("createdBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
@@ -545,13 +579,21 @@ function loadMyCollaborativeProjects() {
           </div>
         `;
       });
+    }, error => {
+      console.error("Error en tiempo real de proyectos colaborativos:", error);
     });
 }
 
 function showCollaborativeProjectDetail(projectId) {
   const el = document.getElementById("myCollaborativeProjects");
   
-  db.collection("collaborativeProjects").doc(projectId).get().then(doc => {
+  // Limpiar suscripción anterior si existe
+  if (teacherViewState.unsubscribeDetail) {
+    teacherViewState.unsubscribeDetail();
+  }
+  
+  // Usar onSnapshot para actualización en tiempo real
+  const unsubscribe = db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
     if (!doc.exists) return;
     
     const project = { id: doc.id, ...doc.data() };
@@ -639,7 +681,124 @@ function showCollaborativeProjectDetail(projectId) {
     
     teacherViewState.currentDetailView = 'collaborative-project';
     teacherViewState.currentDetailId = projectId;
+    
+    // Guardar la función unsubscribe para limpiar cuando se salga de la vista
+    teacherViewState.unsubscribeDetail = unsubscribe;
+  }, error => {
+    console.error("Error en tiempo real de detalle de proyecto:", error);
   });
+}
+
+// ------------------ MEJORAS PARA PROYECTO COLABORATIVO ------------------
+
+// Función para cargar docentes en el desplegable
+function loadTeachersForCollaborativeProject() {
+  const teacherSelect = document.getElementById("projectTeacher");
+  
+  // Limpiar opciones existentes excepto la primera
+  while (teacherSelect.children.length > 1) {
+    teacherSelect.removeChild(teacherSelect.lastChild);
+  }
+  
+  // Obtener docentes de la base de datos
+  db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
+    if (!snap.empty) {
+      snap.forEach(doc => {
+        const teacher = doc.data();
+        // No mostrar al usuario actual en la lista
+        if (doc.id !== currentUser.uid) {
+          const option = document.createElement("option");
+          option.value = teacher.name;
+          option.textContent = teacher.name;
+          teacherSelect.appendChild(option);
+        }
+      });
+    }
+  }, error => {
+    console.error("Error cargando docentes:", error);
+  });
+}
+
+// Función para configurar la fecha mínima (hoy)
+function setupDateValidation() {
+  const dateInput = document.getElementById("projectStartDate");
+  const today = new Date().toISOString().split('T')[0];
+  dateInput.min = today;
+  
+  // Validar fecha al cambiar
+  dateInput.addEventListener('change', function() {
+    const selectedDate = new Date(this.value);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Establecer a medianoche para comparar solo fechas
+    
+    if (selectedDate < today) {
+      this.classList.add('is-invalid');
+      document.getElementById('dateError').style.display = 'block';
+    } else {
+      this.classList.remove('is-invalid');
+      document.getElementById('dateError').style.display = 'none';
+    }
+  });
+}
+
+// Función para agregar estrategia desde el desplegable
+function addSelectedStrategy() {
+  const strategySelect = document.getElementById("strategySelect");
+  const selectedStrategy = strategySelect.value;
+  
+  if (selectedStrategy && !selectedStrategies.includes(selectedStrategy)) {
+    selectedStrategies.push(selectedStrategy);
+    updateSelectedStrategiesList();
+    strategySelect.value = ""; // Resetear selección
+  }
+}
+
+// Función para agregar estrategia personalizada
+function addCustomStrategy() {
+  const newStrategyInput = document.getElementById("newStrategyInput");
+  const customStrategy = newStrategyInput.value.trim();
+  
+  if (customStrategy && !selectedStrategies.includes(customStrategy)) {
+    selectedStrategies.push(customStrategy);
+    updateSelectedStrategiesList();
+    newStrategyInput.value = ""; // Limpiar input
+  }
+}
+
+// Función para actualizar la lista de estrategias seleccionadas
+function updateSelectedStrategiesList() {
+  const strategiesList = document.getElementById("selectedStrategiesList");
+  strategiesList.innerHTML = "";
+  
+  if (selectedStrategies.length === 0) {
+    strategiesList.innerHTML = '<div class="text-muted">No hay estrategias seleccionadas</div>';
+    return;
+  }
+  
+  selectedStrategies.forEach((strategy, index) => {
+    const strategyElement = document.createElement("div");
+    strategyElement.className = "d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded";
+    strategyElement.innerHTML = `
+      <span>${escapeHtml(strategy)}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeStrategy(${index})">
+        <i class="fas fa-times"></i>
+      </button>
+    `;
+    strategiesList.appendChild(strategyElement);
+  });
+}
+
+// Función para eliminar estrategia
+function removeStrategy(index) {
+  selectedStrategies.splice(index, 1);
+  updateSelectedStrategiesList();
+}
+
+// Función para inicializar las mejoras del formulario
+function initializeCollaborativeProjectForm() {
+  loadTeachersForCollaborativeProject();
+  setupDateValidation();
+  updateSelectedStrategiesList(); // Inicializar lista vacía
 }
 
 // ------------------ ASISTENTE VIEW MEJORADA ------------------
@@ -767,6 +926,8 @@ function loadPieRequestsForAssistant() {
           </div>
         `;
       });
+    }, error => {
+      console.error("Error en tiempo real de solicitudes PIE (asistente):", error);
     });
 }
 
@@ -840,6 +1001,8 @@ function loadCollaborativeProjectsForAssistant() {
           </div>
         `;
       });
+    }, error => {
+      console.error("Error en tiempo real de proyectos colaborativos (asistente):", error);
     });
 }
 
@@ -893,6 +1056,13 @@ async function handleContentUpload(e) {
 
     document.getElementById("uploadContentForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("uploadContentModal")).hide();
+    
+    // FORZAR ACTUALIZACIÓN DE LA LISTA DE PROYECTOS
+    if (document.getElementById("teacherView").style.display !== "none") {
+      // Si estamos en vista de profesor, recargar la lista
+      loadMyProjects();
+    }
+    
     showNotification('✅ Archivo subido correctamente', 'success');
 
   } catch (err) {
@@ -966,6 +1136,13 @@ async function handlePieScheduleRequest(e) {
 
     document.getElementById("schedulePieForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("schedulePieModal")).hide();
+    
+    // FORZAR ACTUALIZACIÓN DE LA LISTA DE SOLICITUDES PIE
+    if (document.getElementById("teacherView").style.display !== "none") {
+      // Si estamos en vista de profesor, recargar la lista
+      loadMyPieRequests();
+    }
+    
     showNotification('✅ Solicitud enviada correctamente. Será revisada por el equipo PIE.', 'success');
 
   } catch (err) {
@@ -993,22 +1170,16 @@ async function handleCollaborativeProject(e) {
   const projectFile = document.getElementById("projectFile").files[0];
   const projectFileDescription = document.getElementById("projectFileDescription").value.trim();
 
-  // Obtener estrategias seleccionadas
-  const strategies = [];
-  if (document.getElementById("strategyMultipleMeans").checked) {
-    strategies.push("Múltiples medios de representación");
-  }
-  if (document.getElementById("strategyMultipleAction").checked) {
-    strategies.push("Múltiples medios de acción y expresión");
-  }
-  if (document.getElementById("strategyMultipleEngagement").checked) {
-    strategies.push("Múltiples medios de compromiso");
-  }
-  if (document.getElementById("strategyDifferentiation").checked) {
-    strategies.push("Diferenciación de contenido");
-  }
-  if (document.getElementById("strategyScaffolding").checked) {
-    strategies.push("Andamiaje educativo");
+  // Validar fecha
+  const selectedDate = new Date(projectStartDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  if (selectedDate < today) {
+    alert("La fecha de inicio debe ser igual o posterior a la fecha actual.");
+    document.getElementById("projectStartDate").classList.add('is-invalid');
+    document.getElementById('dateError').style.display = 'block';
+    return;
   }
 
   // Validación básica
@@ -1051,7 +1222,7 @@ async function handleCollaborativeProject(e) {
       teacher: projectTeacher,
       subject: projectSubject,
       objective: projectObjective,
-      strategies: strategies,
+      strategies: selectedStrategies, // Usar las estrategias seleccionadas
       createdBy: currentUser.uid,
       createdByName: currentUser.name,
       status: "pendiente", // Estado inicial
@@ -1070,9 +1241,18 @@ async function handleCollaborativeProject(e) {
 
     await db.collection("collaborativeProjects").add(projectData);
 
-    // Limpiar formulario
+    // Limpiar formulario y resetear estado
     document.getElementById("collaborativeProjectForm").reset();
+    selectedStrategies = []; // Limpiar estrategias seleccionadas
+    updateSelectedStrategiesList(); // Actualizar lista
+    
     bootstrap.Modal.getInstance(document.getElementById("collaborativeProjectModal")).hide();
+    
+    // FORZAR ACTUALIZACIÓN DE LA LISTA DE PROYECTOS
+    if (document.getElementById("teacherView").style.display !== "none") {
+      // Si estamos en vista de profesor, recargar la lista
+      loadMyCollaborativeProjects();
+    }
     
     // Mostrar mensaje de éxito
     const message = fileURL ? 
@@ -1403,9 +1583,17 @@ async function editProject(id) {
 
 // ------------------ NAVIGATION ------------------
 function goBackToProjects() {
+  // Limpiar suscripción de vista detallada
+  if (teacherViewState.unsubscribeDetail) {
+    teacherViewState.unsubscribeDetail();
+    teacherViewState.unsubscribeDetail = null;
+  }
+  
   if (document.getElementById("teacherView").style.display !== "none") {
     // Recargar la lista de proyectos del profesor
     loadMyProjects();
+    loadMyPieRequests();
+    loadMyCollaborativeProjects();
   } else if (document.getElementById("directorView").style.display !== "none") {
     // Volver a la vista de selección de usuario
     document.getElementById("selectedUserTitle").textContent = "Seleccione un trabajador";
@@ -1502,6 +1690,8 @@ function loadCollaborativeProjectsForDirector() {
                 // Cargar comentarios después de crear el elemento
                 setTimeout(() => loadDirectorComments(project.id), 100);
             });
+        }, error => {
+            console.error("Error en tiempo real de proyectos colaborativos (director):", error);
         });
 }
 

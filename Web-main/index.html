@@ -456,149 +456,156 @@
     </div>
   </div>
 
-  <!-- Modal para Proyecto Colaborativo MEJORADO -->
-  <div class="modal fade" id="collaborativeProjectModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header bg-warning text-white">
-          <h5 class="modal-title"><i class="fas fa-users me-2"></i>Crear Proyecto Colaborativo</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form id="collaborativeProjectForm">
-            <div class="row">
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label class="form-label">Nombre del Proyecto *</label>
-                  <input type="text" id="projectName" class="form-control"
-                    placeholder="Ej: Proyecto de Ciencias - Ecosistemas" required>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label class="form-label">Docente Colaborador *</label>
-                  <input type="text" id="projectTeacher" class="form-control" placeholder="Ej: Prof. María González"
-                    required>
-                </div>
+ <!-- Modal para Proyecto Colaborativo MEJORADO -->
+<div class="modal fade" id="collaborativeProjectModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-white">
+        <h5 class="modal-title"><i class="fas fa-users me-2"></i>Crear Proyecto Colaborativo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="collaborativeProjectForm">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Nombre del Proyecto *</label>
+                <input type="text" id="projectName" class="form-control"
+                  placeholder="Ej: Proyecto de Ciencias - Ecosistemas" required>
               </div>
             </div>
-
-            <div class="row">
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label class="form-label">Fecha de Inicio *</label>
-                  <input type="date" id="projectStartDate" class="form-control" required>
-                </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Docente Colaborador *</label>
+                <select id="projectTeacher" class="form-select" required>
+                  <option value="">Seleccionar docente...</option>
+                  <!-- Los docentes se cargarán dinámicamente desde la base de datos -->
+                </select>
               </div>
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label class="form-label">Duración (semanas) *</label>
-                  <input type="number" id="projectDuration" class="form-control" min="1" max="52" placeholder="4"
-                    required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Fecha de Inicio *</label>
+                <input type="date" id="projectStartDate" class="form-control" required>
+                <div class="invalid-feedback" id="dateError">
+                  La fecha debe ser igual o posterior a la fecha actual.
                 </div>
               </div>
             </div>
-
-            <div class="mb-3">
-              <label class="form-label">Asignatura *</label>
-              <select id="projectSubject" class="form-select" required>
-                <option value="">Seleccionar asignatura...</option>
-                <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
-                <option value="Matemáticas">Matemáticas</option>
-                <option value="Historia">Historia</option>
-                <option value="Ciencias">Ciencias</option>
-                <option value="Inglés">Inglés</option>
-                <option value="Arte">Arte</option>
-                <option value="Música">Música</option>
-                <option value="Educación Física">Educación Física</option>
-                <option value="Tecnología">Tecnología</option>
-                <option value="Otra">Otra</option>
-              </select>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Duración (semanas) *</label>
+                <input type="number" id="projectDuration" class="form-control" min="1" max="52" placeholder="4"
+                  required>
+              </div>
             </div>
+          </div>
 
-            <div class="mb-3">
-              <label class="form-label">Objetivo del Proyecto *</label>
-              <textarea id="projectObjective" class="form-control" rows="3"
-                placeholder="Describe el objetivo principal del proyecto colaborativo..." required></textarea>
+          <div class="mb-3">
+            <label class="form-label">Asignatura *</label>
+            <select id="projectSubject" class="form-select" required>
+              <option value="">Seleccionar asignatura...</option>
+              <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
+              <option value="Matemáticas">Matemáticas</option>
+              <option value="Historia">Historia</option>
+              <option value="Ciencias">Ciencias</option>
+              <option value="Inglés">Inglés</option>
+              <option value="Arte">Arte</option>
+              <option value="Música">Música</option>
+              <option value="Educación Física">Educación Física</option>
+              <option value="Tecnología">Tecnología</option>
+              <option value="Otra">Otra</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Objetivo del Proyecto *</label>
+            <textarea id="projectObjective" class="form-control" rows="3"
+              placeholder="Describe el objetivo principal del proyecto colaborativo..." required></textarea>
+          </div>
+
+          <!-- NUEVA SECCIÓN PARA SUBIR ARCHIVOS -->
+          <div class="mb-4">
+            <label class="form-label">Archivos del Proyecto (Opcional)</label>
+            <div class="card border-warning">
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label">Subir archivo relacionado al proyecto</label>
+                  <input type="file" id="projectFile" class="form-control"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4">
+                  <small class="text-muted">Formatos permitidos: PDF, Word, PowerPoint, Excel, imágenes, video</small>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Descripción del archivo</label>
+                  <textarea id="projectFileDescription" class="form-control" rows="2"
+                    placeholder="Describe brevemente el contenido del archivo..."></textarea>
+                </div>
+              </div>
             </div>
+          </div>
 
-            <!-- NUEVA SECCIÓN PARA SUBIR ARCHIVOS -->
-            <div class="mb-4">
-              <label class="form-label">Archivos del Proyecto (Opcional)</label>
-              <div class="card border-warning">
-                <div class="card-body">
-                  <div class="mb-3">
-                    <label class="form-label">Subir archivo relacionado al proyecto</label>
-                    <input type="file" id="projectFile" class="form-control"
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4">
-                    <small class="text-muted">Formatos permitidos: PDF, Word, PowerPoint, Excel, imágenes, video</small>
+          <!-- ESTRATEGIAS DUA/DIVERSIFICACIÓN MEJORADO -->
+          <div class="mb-3">
+            <label class="form-label">Estrategias DUA/Diversificación</label>
+            <div class="card border-warning">
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label">Seleccionar estrategias existentes:</label>
+                  <select id="strategySelect" class="form-select">
+                    <option value="">Seleccionar estrategia...</option>
+                    <option value="Múltiples medios de representación">Múltiples medios de representación</option>
+                    <option value="Múltiples medios de acción y expresión">Múltiples medios de acción y expresión</option>
+                    <option value="Múltiples medios de compromiso">Múltiples medios de compromiso</option>
+                    <option value="Diferenciación de contenido">Diferenciación de contenido</option>
+                    <option value="Andamiaje educativo">Andamiaje educativo</option>
+                    <option value="Flexibilidad en la evaluación">Flexibilidad en la evaluación</option>
+                    <option value="Aprendizaje cooperativo">Aprendizaje cooperativo</option>
+                    <option value="Tutoría entre pares">Tutoría entre pares</option>
+                    <option value="Instrucción diferenciada">Instrucción diferenciada</option>
+                    <option value="Personalización del aprendizaje">Personalización del aprendizaje</option>
+                  </select>
+                  <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addSelectedStrategy()">
+                    <i class="fas fa-plus"></i> Agregar Estrategia Seleccionada
+                  </button>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">Agregar nueva estrategia:</label>
+                  <div class="input-group">
+                    <input type="text" id="newStrategyInput" class="form-control" 
+                      placeholder="Escribe una nueva estrategia...">
+                    <button type="button" class="btn btn-outline-success" onclick="addCustomStrategy()">
+                      <i class="fas fa-plus"></i> Agregar
+                    </button>
                   </div>
-                  <div class="mb-3">
-                    <label class="form-label">Descripción del archivo</label>
-                    <textarea id="projectFileDescription" class="form-control" rows="2"
-                      placeholder="Describe brevemente el contenido del archivo..."></textarea>
+                </div>
+                
+                <div class="selected-strategies-container">
+                  <label class="form-label">Estrategias seleccionadas:</label>
+                  <div id="selectedStrategiesList" class="mt-2">
+                    <!-- Las estrategias seleccionadas aparecerán aquí -->
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="mb-3">
-              <label class="form-label">Estrategias DUA/Diversificación</label>
-              <div class="card border-warning">
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-6">
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="strategyMultipleMeans">
-                        <label class="form-check-label" for="strategyMultipleMeans">
-                          Múltiples medios de representación
-                        </label>
-                      </div>
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="strategyMultipleAction">
-                        <label class="form-check-label" for="strategyMultipleAction">
-                          Múltiples medios de acción
-                        </label>
-                      </div>
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="strategyMultipleEngagement">
-                        <label class="form-check-label" for="strategyMultipleEngagement">
-                          Múltiples medios de compromiso
-                        </label>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="strategyDifferentiation">
-                        <label class="form-check-label" for="strategyDifferentiation">
-                          Diferenciación de contenido
-                        </label>
-                      </div>
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="strategyScaffolding">
-                        <label class="form-check-label" for="strategyScaffolding">
-                          Andamiaje educativo
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="alert alert-info">
+            <small><i class="fas fa-info-circle"></i> Los campos marcados con * son obligatorios. Los archivos son
+              opcionales pero recomendados.</small>
+          </div>
 
-            <div class="alert alert-info">
-              <small><i class="fas fa-info-circle"></i> Los campos marcados con * son obligatorios. Los archivos son
-                opcionales pero recomendados.</small>
-            </div>
-
-            <button class="btn btn-warning w-100 py-2" type="submit">
-              <i class="fas fa-plus-circle me-2"></i> Crear Proyecto Colaborativo
-            </button>
-          </form>
-        </div>
+          <button class="btn btn-warning w-100 py-2" type="submit">
+            <i class="fas fa-plus-circle me-2"></i> Crear Proyecto Colaborativo
+          </button>
+        </form>
       </div>
     </div>
   </div>
+</div>
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
