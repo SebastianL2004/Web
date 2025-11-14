@@ -1089,3 +1089,166 @@ body::before {
 .teacher-sidebar .scrollable-card .card-body {
     padding: 12px;
 }
+
+/* ===== NOTIFICACIONES EN TIEMPO REAL ===== */
+.realtime-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    max-width: 400px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.realtime-notification.hide {
+    animation: slideOutRight 0.3s ease-in;
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Indicador de actividad en tiempo real */
+.realtime-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--success-color);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    z-index: 9998;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.realtime-indicator .pulse {
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    50% { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+/* ===== MEJORAS PARA TIEMPO REAL ===== */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 20px;
+}
+
+.loading-container .loading {
+    margin-bottom: 15px;
+}
+
+.loading-container p {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.realtime-update {
+    animation: highlightUpdate 2s ease-in-out;
+    border-left: 4px solid #28a745 !important;
+}
+
+@keyframes highlightUpdate {
+    0% {
+        background-color: rgba(40, 167, 69, 0.1);
+        transform: translateX(-5px);
+    }
+    50% {
+        background-color: rgba(40, 167, 69, 0.2);
+    }
+    100% {
+        background-color: transparent;
+        transform: translateX(0);
+    }
+}
+
+/* Mejoras para estados vacíos */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    opacity: 0.5;
+    color: #2c5aa0;
+}
+
+.empty-state p {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    font-weight: 500;
+}
+
+.empty-state .btn {
+    margin-top: 10px;
+}
+
+/* Badges para estado nuevo */
+.badge.bg-success {
+    font-size: 0.7rem;
+    padding: 3px 6px;
+}
+
+/* Mejoras para notificaciones */
+.alert.position-fixed {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: none;
+    border-left: 4px solid;
+}
+
+.alert-success {
+    border-left-color: #28a745;
+}
+
+.alert-warning {
+    border-left-color: #ffc107;
+}
+
+.alert-info {
+    border-left-color: #17a2b8;
+}
+
+.alert-danger {
+    border-left-color: #dc3545;
+}
