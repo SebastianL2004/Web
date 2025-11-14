@@ -20,15 +20,23 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
 let currentUser = null;
 let loginModal, registerModal;
 
-// Estado global para gestión de vistas
+// Estado global para gestión de vistas y suscripciones en tiempo real
 let teacherViewState = {
-    currentDetailView: null, // 'pie-request' | 'collaborative-project' | null
+    currentDetailView: null,
     currentDetailId: null,
-    unsubscribeDetail: null // Para limpiar suscripciones
+    unsubscribeDetail: null
 };
 
 // Array global para almacenar estrategias seleccionadas en proyectos colaborativos
 let selectedStrategies = [];
+
+// Sistema de suscripciones en tiempo real
+let realtimeSubscriptions = {
+    projects: null,
+    pieRequests: null,
+    collaborativeProjects: null,
+    onlineTeachers: null
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   // Inicializar modales después de que el DOM esté listo
@@ -47,7 +55,70 @@ document.addEventListener('DOMContentLoaded', () => {
   
   setupFormListeners();
   auth.onAuthStateChanged(onAuthStateChanged);
+  
+  // Inicializar indicador de tiempo real
+  initializeRealtimeIndicator();
 });
+
+// ------------------ SISTEMA DE TIEMPO REAL MEJORADO ------------------
+
+function initializeRealtimeIndicator() {
+    // Crear indicador de actividad en tiempo real
+    const indicator = document.createElement('div');
+    indicator.className = 'realtime-indicator';
+    indicator.innerHTML = `
+        <div class="pulse"></div>
+        <span>Conectado en tiempo real</span>
+    `;
+    document.body.appendChild(indicator);
+}
+
+// Función para mostrar notificaciones en tiempo real
+function showRealtimeNotification(message, type = 'info', action = 'creó') {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} realtime-notification`;
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="fas fa-bell me-2"></i>
+            <div class="flex-grow-1">
+                <strong>Nueva actividad:</strong><br>
+                ${message}
+            </div>
+            <button type="button" class="btn-close" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.classList.add('hide');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }
+    }, 5000);
+}
+
+// Limpiar todas las suscripciones en tiempo real
+function cleanupRealtimeSubscriptions() {
+    Object.values(realtimeSubscriptions).forEach(unsubscribe => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+            unsubscribe();
+        }
+    });
+    
+    // Limpiar estado
+    realtimeSubscriptions = {
+        projects: null,
+        pieRequests: null,
+        collaborativeProjects: null,
+        onlineTeachers: null
+    };
+}
 
 // ------------------ FORM LISTENERS ------------------
 function setupFormListeners() {
@@ -126,6 +197,9 @@ async function onAuthStateChanged(user) {
 
     setPresenceOnline(user.uid);
 
+    // Limpiar suscripciones anteriores
+    cleanupRealtimeSubscriptions();
+
     // Asignar vista según rol
     if (currentUser.role === 'director') showDirectorView();
     else if (currentUser.role === 'asistente') showAssistantView();
@@ -135,6 +209,9 @@ async function onAuthStateChanged(user) {
     currentUser = null;
     document.getElementById('username').textContent = 'No autenticado';
     document.getElementById('logoutBtn').style.display = 'none';
+    
+    // Limpiar suscripciones
+    cleanupRealtimeSubscriptions();
     
     // Mostrar modal de login
     hideAllViews();
@@ -159,6 +236,7 @@ async function onAuthStateChanged(user) {
 function logout() {
   if (!currentUser) return;
   rdb.ref('presence/' + currentUser.uid).set(false).catch(() => {});
+  cleanupRealtimeSubscriptions();
   auth.signOut();
 }
 
@@ -171,21 +249,29 @@ function setPresenceOnline(uid) {
   });
 }
 
-// ------------------ DIRECTOR VIEW MEJORADA ------------------
+// ------------------ DIRECTOR VIEW MEJORADA CON TIEMPO REAL ------------------
 function showDirectorView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
   document.getElementById("directorView").style.display = "block";
+  
+  // Cargar datos con suscripciones en tiempo real
   loadOnlineTeachersForDirector();
   loadPieRequestsForDirector();
   loadCollaborativeProjectsForDirector();
+  loadAllProjectsForDirector();
 }
 
 function loadOnlineTeachersForDirector() {
   const el = document.getElementById("onlineTeachersDirector");
-  el.innerHTML = "<div class='loading'></div>";
+  el.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
 
-  db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.onlineTeachers) {
+    realtimeSubscriptions.onlineTeachers();
+  }
+
+  realtimeSubscriptions.onlineTeachers = db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
     el.innerHTML = "";
     let hasOnlineTeachers = false;
     
@@ -199,33 +285,45 @@ function loadOnlineTeachersForDirector() {
       return;
     }
     
+    const onlinePromises = [];
+    
     snap.forEach(doc => {
       const u = { uid: doc.id, ...doc.data() };
-      rdb.ref("presence/" + u.uid).on("value", p => {
-        const online = p.exists() && p.val();
-        if (online) {
-          hasOnlineTeachers = true;
-          el.innerHTML += `
-            <div class="teacher-status-item">
-              <div class="d-flex align-items-center">
-                <span class="dot dot-online me-3"></span>
-                <div class="teacher-info">
-                  <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
-                  <span class="teacher-role small text-muted">Profesor conectado</span>
+      const promise = new Promise((resolve) => {
+        rdb.ref("presence/" + u.uid).on("value", p => {
+          const online = p.exists() && p.val();
+          if (online) {
+            hasOnlineTeachers = true;
+            resolve(`
+              <div class="teacher-status-item">
+                <div class="d-flex align-items-center">
+                  <span class="dot dot-online me-3"></span>
+                  <div class="teacher-info">
+                    <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
+                    <span class="teacher-role small text-muted">Profesor conectado</span>
+                  </div>
                 </div>
-              </div>
-            </div>`;
-        }
-        
-        if (!hasOnlineTeachers && el.innerHTML === "") {
-          el.innerHTML = `
-            <div class="empty-state">
-              <i class="fas fa-wifi-slash"></i>
-              <p>No hay docentes conectados</p>
-            </div>
-          `;
-        }
+              </div>`);
+          } else {
+            resolve('');
+          }
+        });
       });
+      onlinePromises.push(promise);
+    });
+    
+    Promise.all(onlinePromises).then(results => {
+      const html = results.join('');
+      if (html) {
+        el.innerHTML = html;
+      } else {
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-wifi-slash"></i>
+            <p>No hay docentes conectados</p>
+          </div>
+        `;
+      }
     });
   });
 }
@@ -233,7 +331,12 @@ function loadOnlineTeachersForDirector() {
 function loadPieRequestsForDirector() {
   const el = document.getElementById("pieRequestsListDirector");
   
-  db.collection("pieRequests")
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.pieRequests) {
+    realtimeSubscriptions.pieRequests();
+  }
+
+  realtimeSubscriptions.pieRequests = db.collection("pieRequests")
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
       el.innerHTML = "";
@@ -248,16 +351,26 @@ function loadPieRequestsForDirector() {
         return;
       }
       
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const request = { id: doc.id, ...doc.data() };
         const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
         const isCompleted = request.status === 'completada';
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         el.innerHTML += `
-          <div class="pie-request-item ${isCompleted ? 'completed' : ''}">
+          <div class="pie-request-item ${isCompleted ? 'completed' : ''} ${isNew ? 'realtime-update' : ''}">
             <div class="pie-request-header">
               <div class="pie-request-student">
                 ${escapeHtml(request.studentName)} - ${escapeHtml(request.studentGrade)}
+                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
               </div>
               <span class="badge badge-${request.status}">${request.status}</span>
             </div>
@@ -288,12 +401,68 @@ function loadPieRequestsForDirector() {
           </div>
         `;
       });
+      
+      // Mostrar notificación para nuevas solicitudes
+      if (hasNewItems && currentUser.role === 'director') {
+        showRealtimeNotification('Nueva solicitud PIE recibida', 'info', 'solicitó');
+      }
     }, error => {
       console.error("Error en tiempo real de solicitudes PIE (director):", error);
     });
 }
 
-// ------------------ TEACHER VIEW MEJORADA ------------------
+// NUEVA FUNCIÓN: Cargar todos los proyectos para el director
+function loadAllProjectsForDirector() {
+  // Suscripción a nuevos proyectos de profesores
+  db.collection("projects")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const project = { id: change.doc.id, ...change.doc.data() };
+          showRealtimeNotification(
+            `El profesor ${escapeHtml(project.uploadedByName || 'Un profesor')} subió: "${escapeHtml(project.title)}"`,
+            'success',
+            'subió'
+          );
+        }
+      });
+    });
+
+  // Suscripción a nuevos proyectos colaborativos
+  db.collection("collaborativeProjects")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const project = { id: change.doc.id, ...change.doc.data() };
+          showRealtimeNotification(
+            `Nuevo proyecto colaborativo: "${escapeHtml(project.name)}" por ${escapeHtml(project.createdByName)}`,
+            'warning',
+            'creó'
+          );
+        }
+      });
+    });
+
+  // Suscripción a nuevas solicitudes PIE
+  db.collection("pieRequests")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const request = { id: change.doc.id, ...change.doc.data() };
+          showRealtimeNotification(
+            `Nueva solicitud PIE para ${escapeHtml(request.studentName)} de ${escapeHtml(request.requestedByName)}`,
+            'info',
+            'solicitó'
+          );
+        }
+      });
+    });
+}
+
+// ------------------ TEACHER VIEW MEJORADA CON TIEMPO REAL ------------------
 function showTeacherView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
@@ -309,7 +478,7 @@ function showTeacherView() {
   teacherViewState.currentDetailId = null;
   teacherViewState.unsubscribeDetail = null;
   
-  // Cargar datos con nuevo layout
+  // Cargar datos con nuevo sistema en tiempo real - CORREGIDO: Sin delay
   loadMyProjects();
   loadMyPieRequests();
   loadMyCollaborativeProjects();
@@ -330,7 +499,12 @@ function hideAllViews() {
 function loadMyProjects() {
   const el = document.getElementById("projectsList");
   
-  db.collection("projects").where("uploadedBy", "==", currentUser.uid)
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.projects) {
+    realtimeSubscriptions.projects();
+  }
+
+  realtimeSubscriptions.projects = db.collection("projects").where("uploadedBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
       el.innerHTML = "";
@@ -343,20 +517,35 @@ function loadMyProjects() {
         `;
         return;
       }
+      
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added' && change.doc.metadata.hasPendingWrites) {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const p = { id: doc.id, ...doc.data() };
         const uploadDate = p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         el.innerHTML += `
-          <div class="project-item" onclick="viewProject('${p.id}')">
+          <div class="project-item ${isNew ? 'realtime-update' : ''}" onclick="viewProject('${p.id}')">
             <div class="d-flex justify-content-between align-items-start">
-              <h6>${escapeHtml(p.title)}</h6>
+              <h6>${escapeHtml(p.title)} ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}</h6>
               <small class="text-muted">${uploadDate}</small>
             </div>
             <small class="text-muted">${escapeHtml(p.subject)}</small>
             <p class="mt-2 small">${escapeHtml(p.description.substring(0, 100))}${p.description.length > 100 ? '...' : ''}</p>
           </div>`;
       });
+      
+      // Mostrar notificación para nuevos proyectos
+      if (hasNewItems) {
+        showRealtimeNotification('Tu archivo se subió correctamente', 'success', 'subiste');
+      }
     }, error => {
       console.error("Error en tiempo real de proyectos:", error);
     });
@@ -365,8 +554,13 @@ function loadMyProjects() {
 function loadMyPieRequests() {
   const el = document.getElementById("myPieRequests");
   
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.pieRequests) {
+    realtimeSubscriptions.pieRequests();
+  }
+
   // Usar onSnapshot para actualización en tiempo real
-  db.collection("pieRequests")
+  realtimeSubscriptions.pieRequests = db.collection("pieRequests")
     .where("requestedBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
@@ -382,19 +576,28 @@ function loadMyPieRequests() {
         return;
       }
       
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added' && change.doc.metadata.hasPendingWrites) {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const request = { id: doc.id, ...doc.data() };
         const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         // Determinar si tiene comentarios del director
         const hasDirectorComments = request.directorComments && request.directorComments.length > 0;
         
         el.innerHTML += `
-          <div class="pie-request-item-clickable ${hasDirectorComments ? 'has-director-comments' : ''}" 
+          <div class="pie-request-item-clickable ${hasDirectorComments ? 'has-director-comments' : ''} ${isNew ? 'realtime-update' : ''}" 
                onclick="showPieRequestDetail('${request.id}')">
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
-                <strong>${escapeHtml(request.studentName)}</strong>
+                <strong>${escapeHtml(request.studentName)} ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}</strong>
                 <small class="d-block text-muted">${escapeHtml(request.studentGrade)}</small>
               </div>
               <span class="pie-request-status status-${request.status}">${request.status}</span>
@@ -416,6 +619,11 @@ function loadMyPieRequests() {
           </div>
         `;
       });
+      
+      // Mostrar notificación para nuevas solicitudes
+      if (hasNewItems) {
+        showRealtimeNotification('Tu solicitud PIE se envió correctamente', 'success', 'solicitaste');
+      }
     }, error => {
       console.error("Error en tiempo real de solicitudes PIE:", error);
     });
@@ -526,13 +734,18 @@ function showPieRequestDetail(requestId) {
   });
 }
 
-// ===== PROYECTOS COLABORATIVOS MEJORADOS =====
+// ===== PROYECTOS COLABORATIVOS MEJORADOS CON TIEMPO REAL =====
 
 function loadMyCollaborativeProjects() {
   const el = document.getElementById("myCollaborativeProjects");
   
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.collaborativeProjects) {
+    realtimeSubscriptions.collaborativeProjects();
+  }
+
   // Usar onSnapshot para actualización en tiempo real
-  db.collection("collaborativeProjects")
+  realtimeSubscriptions.collaborativeProjects = db.collection("collaborativeProjects")
     .where("createdBy", "==", currentUser.uid)
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
@@ -548,19 +761,28 @@ function loadMyCollaborativeProjects() {
         return;
       }
       
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added' && change.doc.metadata.hasPendingWrites) {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const project = { id: doc.id, ...doc.data() };
         const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         // Contar comentarios del director
         const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
         
         el.innerHTML += `
-          <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''}" 
+          <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''} ${isNew ? 'realtime-update' : ''}" 
                onclick="showCollaborativeProjectDetail('${project.id}')">
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
-                <strong>${escapeHtml(project.name)}</strong>
+                <strong>${escapeHtml(project.name)} ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}</strong>
                 <small class="d-block text-muted">${escapeHtml(project.teacher)} - ${escapeHtml(project.subject)}</small>
               </div>
               <span class="badge bg-warning">Proyecto</span>
@@ -579,6 +801,11 @@ function loadMyCollaborativeProjects() {
           </div>
         `;
       });
+      
+      // Mostrar notificación para nuevos proyectos
+      if (hasNewItems) {
+        showRealtimeNotification('Tu proyecto colaborativo se creó correctamente', 'success', 'creaste');
+      }
     }, error => {
       console.error("Error en tiempo real de proyectos colaborativos:", error);
     });
@@ -801,21 +1028,29 @@ function initializeCollaborativeProjectForm() {
   updateSelectedStrategiesList(); // Inicializar lista vacía
 }
 
-// ------------------ ASISTENTE VIEW MEJORADA ------------------
+// ------------------ ASISTENTE VIEW MEJORADA CON TIEMPO REAL ------------------
 function showAssistantView() {
   hideAllViews();
   document.getElementById("mainContent").style.display = "block";
   document.getElementById("assistantView").style.display = "block";
+  
+  // Cargar datos con suscripciones en tiempo real
   loadOnlineTeachersForAssistant();
   loadPieRequestsForAssistant();
   loadCollaborativeProjectsForAssistant();
+  loadAllContentForAssistant();
 }
 
 function loadOnlineTeachersForAssistant() {
   const el = document.getElementById("onlineTeachersAssistant");
-  el.innerHTML = "<div class='loading'></div>";
+  el.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
 
-  db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.onlineTeachers) {
+    realtimeSubscriptions.onlineTeachers();
+  }
+
+  realtimeSubscriptions.onlineTeachers = db.collection("users").where("role", "==", "profesor").onSnapshot(snap => {
     el.innerHTML = "";
     let hasOnlineTeachers = false;
     
@@ -829,33 +1064,45 @@ function loadOnlineTeachersForAssistant() {
       return;
     }
     
+    const onlinePromises = [];
+    
     snap.forEach(doc => {
       const u = { uid: doc.id, ...doc.data() };
-      rdb.ref("presence/" + u.uid).on("value", p => {
-        const online = p.exists() && p.val();
-        if (online) {
-          hasOnlineTeachers = true;
-          el.innerHTML += `
-            <div class="teacher-status-item">
-              <div class="d-flex align-items-center">
-                <span class="dot dot-online me-3"></span>
-                <div class="teacher-info">
-                  <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
-                  <span class="teacher-role small text-muted">Profesor conectado</span>
+      const promise = new Promise((resolve) => {
+        rdb.ref("presence/" + u.uid).on("value", p => {
+          const online = p.exists() && p.val();
+          if (online) {
+            hasOnlineTeachers = true;
+            resolve(`
+              <div class="teacher-status-item">
+                <div class="d-flex align-items-center">
+                  <span class="dot dot-online me-3"></span>
+                  <div class="teacher-info">
+                    <span class="teacher-name d-block">${escapeHtml(u.name)}</span>
+                    <span class="teacher-role small text-muted">Profesor conectado</span>
+                  </div>
                 </div>
-              </div>
-            </div>`;
-        }
-        
-        if (!hasOnlineTeachers && el.innerHTML === "") {
-          el.innerHTML = `
-            <div class="empty-state">
-              <i class="fas fa-wifi-slash"></i>
-              <p>No hay docentes conectados</p>
-            </div>
-          `;
-        }
+              </div>`);
+          } else {
+            resolve('');
+          }
+        });
       });
+      onlinePromises.push(promise);
+    });
+    
+    Promise.all(onlinePromises).then(results => {
+      const html = results.join('');
+      if (html) {
+        el.innerHTML = html;
+      } else {
+        el.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-wifi-slash"></i>
+            <p>No hay docentes conectados</p>
+          </div>
+        `;
+      }
     });
   });
 }
@@ -863,7 +1110,12 @@ function loadOnlineTeachersForAssistant() {
 function loadPieRequestsForAssistant() {
   const el = document.getElementById("pieRequestsListAssistant");
   
-  db.collection("pieRequests")
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.pieRequests) {
+    realtimeSubscriptions.pieRequests();
+  }
+
+  realtimeSubscriptions.pieRequests = db.collection("pieRequests")
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
       el.innerHTML = "";
@@ -878,16 +1130,26 @@ function loadPieRequestsForAssistant() {
         return;
       }
       
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const request = { id: doc.id, ...doc.data() };
         const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
         const isCompleted = request.status === 'completada';
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         el.innerHTML += `
-          <div class="pie-request-item ${isCompleted ? 'completed' : ''}">
+          <div class="pie-request-item ${isCompleted ? 'completed' : ''} ${isNew ? 'realtime-update' : ''}">
             <div class="pie-request-header">
               <div class="pie-request-student">
                 ${escapeHtml(request.studentName)} - ${escapeHtml(request.studentGrade)}
+                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
               </div>
               <span class="badge badge-${request.status}">${request.status}</span>
             </div>
@@ -926,6 +1188,11 @@ function loadPieRequestsForAssistant() {
           </div>
         `;
       });
+      
+      // Mostrar notificación para nuevas solicitudes
+      if (hasNewItems && currentUser.role === 'asistente') {
+        showRealtimeNotification('Nueva solicitud PIE recibida', 'info', 'solicitó');
+      }
     }, error => {
       console.error("Error en tiempo real de solicitudes PIE (asistente):", error);
     });
@@ -934,7 +1201,12 @@ function loadPieRequestsForAssistant() {
 function loadCollaborativeProjectsForAssistant() {
   const el = document.getElementById("collaborativeProjectsAssistant");
   
-  db.collection("collaborativeProjects")
+  // Limpiar suscripción anterior
+  if (realtimeSubscriptions.collaborativeProjects) {
+    realtimeSubscriptions.collaborativeProjects();
+  }
+
+  realtimeSubscriptions.collaborativeProjects = db.collection("collaborativeProjects")
     .orderBy("createdAt", "desc")
     .onSnapshot(snap => {
       el.innerHTML = "";
@@ -949,20 +1221,30 @@ function loadCollaborativeProjectsForAssistant() {
         return;
       }
       
+      let hasNewItems = false;
+      
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          hasNewItems = true;
+        }
+      });
+      
       snap.forEach(doc => {
         const project = { id: doc.id, ...doc.data() };
         const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
         const endDate = project.startDate && project.duration ? 
           new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+        const isNew = hasNewItems && doc.metadata.hasPendingWrites;
         
         // Determinar si está completado
         const isCompleted = project.status === 'completada';
         
         el.innerHTML += `
-          <div class="collaborative-project-item ${isCompleted ? 'completed' : ''}">
+          <div class="collaborative-project-item ${isCompleted ? 'completed' : ''} ${isNew ? 'realtime-update' : ''}">
             <div class="collaborative-project-header">
               <div class="collaborative-project-title">
                 ${escapeHtml(project.name)}
+                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
               </div>
               <span class="badge badge-${project.status || 'pendiente'}">${project.status || 'pendiente'}</span>
             </div>
@@ -1001,8 +1283,32 @@ function loadCollaborativeProjectsForAssistant() {
           </div>
         `;
       });
+      
+      // Mostrar notificación para nuevos proyectos
+      if (hasNewItems && currentUser.role === 'asistente') {
+        showRealtimeNotification('Nuevo proyecto colaborativo creado', 'warning', 'creó');
+      }
     }, error => {
       console.error("Error en tiempo real de proyectos colaborativos (asistente):", error);
+    });
+}
+
+// NUEVA FUNCIÓN: Cargar todo el contenido para el asistente
+function loadAllContentForAssistant() {
+  // Suscripción a nuevos proyectos de profesores
+  db.collection("projects")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const project = { id: change.doc.id, ...change.doc.data() };
+          showRealtimeNotification(
+            `El profesor ${escapeHtml(project.uploadedByName || 'Un profesor')} subió: "${escapeHtml(project.title)}"`,
+            'success',
+            'subió'
+          );
+        }
+      });
     });
 }
 
@@ -1049,6 +1355,7 @@ async function handleContentUpload(e) {
       description,
       filename: file.name,
       uploadedBy: currentUser.uid,
+      uploadedByName: currentUser.name, // Agregar nombre del usuario
       fileURL: data.secure_url,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       comments: []
@@ -1057,11 +1364,7 @@ async function handleContentUpload(e) {
     document.getElementById("uploadContentForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("uploadContentModal")).hide();
     
-    // FORZAR ACTUALIZACIÓN DE LA LISTA DE PROYECTOS
-    if (document.getElementById("teacherView").style.display !== "none") {
-      // Si estamos en vista de profesor, recargar la lista
-      loadMyProjects();
-    }
+    // NO es necesario forzar actualización - se hace automáticamente en tiempo real
     
     showNotification('✅ Archivo subido correctamente', 'success');
 
@@ -1137,11 +1440,7 @@ async function handlePieScheduleRequest(e) {
     document.getElementById("schedulePieForm").reset();
     bootstrap.Modal.getInstance(document.getElementById("schedulePieModal")).hide();
     
-    // FORZAR ACTUALIZACIÓN DE LA LISTA DE SOLICITUDES PIE
-    if (document.getElementById("teacherView").style.display !== "none") {
-      // Si estamos en vista de profesor, recargar la lista
-      loadMyPieRequests();
-    }
+    // NO es necesario forzar actualización - se hace automáticamente en tiempo real
     
     showNotification('✅ Solicitud enviada correctamente. Será revisada por el equipo PIE.', 'success');
 
@@ -1248,11 +1547,7 @@ async function handleCollaborativeProject(e) {
     
     bootstrap.Modal.getInstance(document.getElementById("collaborativeProjectModal")).hide();
     
-    // FORZAR ACTUALIZACIÓN DE LA LISTA DE PROYECTOS
-    if (document.getElementById("teacherView").style.display !== "none") {
-      // Si estamos en vista de profesor, recargar la lista
-      loadMyCollaborativeProjects();
-    }
+    // NO es necesario forzar actualización - se hace automáticamente en tiempo real
     
     // Mostrar mensaje de éxito
     const message = fileURL ? 
@@ -1607,7 +1902,12 @@ function goBackToProjects() {
 function loadCollaborativeProjectsForDirector() {
     const el = document.getElementById("collaborativeProjectsDirector");
     
-    db.collection("collaborativeProjects")
+    // Limpiar suscripción anterior
+    if (realtimeSubscriptions.collaborativeProjects) {
+        realtimeSubscriptions.collaborativeProjects();
+    }
+
+    realtimeSubscriptions.collaborativeProjects = db.collection("collaborativeProjects")
         .orderBy("createdAt", "desc")
         .onSnapshot(snap => {
             el.innerHTML = "";
@@ -1622,17 +1922,27 @@ function loadCollaborativeProjectsForDirector() {
                 return;
             }
             
+            let hasNewItems = false;
+            
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    hasNewItems = true;
+                }
+            });
+            
             snap.forEach(doc => {
                 const project = { id: doc.id, ...doc.data() };
                 const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
                 const endDate = project.startDate && project.duration ? 
                     new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+                const isNew = hasNewItems && doc.metadata.hasPendingWrites;
                 
                 el.innerHTML += `
-                    <div class="collaborative-project-item">
+                    <div class="collaborative-project-item ${isNew ? 'realtime-update' : ''}">
                         <div class="collaborative-project-header">
                             <div class="collaborative-project-title">
                                 ${escapeHtml(project.name)}
+                                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
                             </div>
                             <span class="badge bg-warning">Proyecto</span>
                         </div>
@@ -1690,6 +2000,11 @@ function loadCollaborativeProjectsForDirector() {
                 // Cargar comentarios después de crear el elemento
                 setTimeout(() => loadDirectorComments(project.id), 100);
             });
+            
+            // Mostrar notificación para nuevos proyectos
+            if (hasNewItems && currentUser.role === 'director') {
+                showRealtimeNotification('Nuevo proyecto colaborativo creado', 'warning', 'creó');
+            }
         }, error => {
             console.error("Error en tiempo real de proyectos colaborativos (director):", error);
         });
@@ -1697,168 +2012,169 @@ function loadCollaborativeProjectsForDirector() {
 
 // Función para cargar comentarios del director
 function loadDirectorComments(projectId) {
-    const commentsBox = document.getElementById(`directorComments-${projectId}`);
-    if (!commentsBox) return;
+  const commentsBox = document.getElementById(`directorComments-${projectId}`);
+  if (!commentsBox) return;
 
-    db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
-        const project = doc.data();
-        const comments = project.directorComments || [];
+  db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
+    const project = doc.data();
+    const comments = project.directorComments || [];
 
-        // Actualizar contador
-        const commentCount = document.getElementById(`commentCount-${projectId}`);
-        if (commentCount) {
-            commentCount.textContent = comments.length;
-        }
+    // Actualizar contador
+    const commentCount = document.getElementById(`commentCount-${projectId}`);
+    if (commentCount) {
+      commentCount.textContent = comments.length;
+    }
 
-        if (!comments.length) {
-            commentsBox.innerHTML = `
-                <div class="text-center text-muted py-3">
-                    <i class="fas fa-comments fa-2x mb-2"></i>
-                    <p>No hay comentarios aún.<br>Se el primero en comentar este proyecto.</p>
-                </div>
-            `;
-            return;
-        }
+    if (!comments.length) {
+      commentsBox.innerHTML = `
+        <div class="text-center text-muted py-3">
+          <i class="fas fa-comments fa-2x mb-2"></i>
+          <p>No hay comentarios aún.<br>Se el primero en comentar este proyecto.</p>
+        </div>
+      `;
+      return;
+    }
 
-        commentsBox.innerHTML = comments.sort((a, b) => b.date.seconds - a.date.seconds)
-            .map(comment => `
-                <div class="director-comment-item">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
-                            <small class="text-muted ms-2">(Director)</small>
-                        </div>
-                        <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
-                    </div>
-                    <div class="comment-text bg-light p-3 rounded">${escapeHtml(comment.text)}</div>
-                    ${comment.author === currentUser.uid ? `
-                        <div class="text-end mt-2">
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDirectorComment('${projectId}', '${comment.date.seconds}')">
-                                <i class="fas fa-trash"></i> Eliminar
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            `).join("");
-    });
+    commentsBox.innerHTML = comments.sort((a, b) => b.date.seconds - a.date.seconds)
+      .map(comment => `
+        <div class="director-comment-item">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <strong class="comment-author">${escapeHtml(comment.authorName)}</strong>
+              <small class="text-muted ms-2">(Director)</small>
+            </div>
+            <small class="comment-date">${new Date(comment.date.seconds * 1000).toLocaleString('es-CL')}</small>
+          </div>
+          <div class="comment-text bg-light p-3 rounded">${escapeHtml(comment.text)}</div>
+          ${comment.author === currentUser.uid ? `
+            <div class="text-end mt-2">
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteDirectorComment('${projectId}', '${comment.date.seconds}')">
+                <i class="fas fa-trash"></i> Eliminar
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `).join("");
+  });
 }
 
-// Función para que el director agregue un comentario
 async function addDirectorComment(projectId) {
-    if (currentUser.role !== 'director') {
-        alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
-        return;
-    }
+  if (currentUser.role !== 'director') {
+    alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
+    return;
+  }
 
-    const textElement = document.getElementById(`newDirectorComment-${projectId}`);
-    const text = textElement.value.trim();
+  const textElement = document.getElementById(`newDirectorComment-${projectId}`);
+  if (!textElement) return;
+  
+  const text = textElement.value.trim();
+  
+  if (!text) {
+    alert("Por favor, escribe un comentario antes de enviar.");
+    return;
+  }
+
+  try {
+    const comment = {
+      author: currentUser.uid,
+      authorName: currentUser.name,
+      text: text,
+      date: firebase.firestore.Timestamp.now(),
+      role: 'director'
+    };
+
+    await db.collection("collaborativeProjects").doc(projectId).update({
+      directorComments: firebase.firestore.FieldValue.arrayUnion(comment)
+    });
+
+    textElement.value = "";
+    showNotification('✅ Comentario agregado correctamente', 'success');
     
-    if (!text) {
-        alert("Por favor, escribe un comentario antes de enviar.");
-        return;
-    }
-
-    try {
-        const comment = {
-            author: currentUser.uid,
-            authorName: currentUser.name,
-            text: text,
-            date: firebase.firestore.Timestamp.now(),
-            role: 'director'
-        };
-
-        await db.collection("collaborativeProjects").doc(projectId).update({
-            directorComments: firebase.firestore.FieldValue.arrayUnion(comment)
-        });
-
-        textElement.value = "";
-        showNotification('✅ Comentario agregado correctamente', 'success');
-        
-    } catch (err) {
-        console.error(err);
-        showNotification('❌ Error al agregar comentario: ' + err.message, 'error');
-    }
+  } catch (err) {
+    console.error(err);
+    showNotification('❌ Error al agregar comentario: ' + err.message, 'error');
+  }
 }
 
-// Función para eliminar comentario del director
 async function deleteDirectorComment(projectId, commentTimestamp) {
-    if (!confirm("¿Estás seguro de que quieres eliminar este comentario?")) return;
+  if (!confirm("¿Estás seguro de que quieres eliminar este comentario?")) return;
 
-    try {
-        const doc = await db.collection("collaborativeProjects").doc(projectId).get();
-        const project = doc.data();
-        const comments = project.directorComments || [];
-        
-        const commentToDelete = comments.find(comment => 
-            comment.date.seconds.toString() === commentTimestamp
-        );
+  try {
+    const doc = await db.collection("collaborativeProjects").doc(projectId).get();
+    const project = doc.data();
+    const comments = project.directorComments || [];
+    
+    const commentToDelete = comments.find(comment => 
+      comment.date.seconds.toString() === commentTimestamp
+    );
 
-        if (!commentToDelete) {
-            alert("Comentario no encontrado.");
-            return;
-        }
-
-        if (commentToDelete.author !== currentUser.uid) {
-            alert("Solo puedes eliminar tus propios comentarios.");
-            return;
-        }
-
-        await db.collection("collaborativeProjects").doc(projectId).update({
-            directorComments: firebase.firestore.FieldValue.arrayRemove(commentToDelete)
-        });
-
-        showNotification('✅ Comentario eliminado correctamente', 'success');
-        
-    } catch (err) {
-        console.error(err);
-        showNotification('❌ Error al eliminar comentario: ' + err.message, 'error');
+    if (!commentToDelete) {
+      alert("Comentario no encontrado.");
+      return;
     }
+
+    if (commentToDelete.author !== currentUser.uid) {
+      alert("Solo puedes eliminar tus propios comentarios.");
+      return;
+    }
+
+    await db.collection("collaborativeProjects").doc(projectId).update({
+      directorComments: firebase.firestore.FieldValue.arrayRemove(commentToDelete)
+    });
+
+    showNotification('✅ Comentario eliminado correctamente', 'success');
+    
+  } catch (err) {
+    console.error(err);
+    showNotification('❌ Error al eliminar comentario: ' + err.message, 'error');
+  }
 }
+
 
 // ------------------ UTILITY FUNCTIONS ------------------
 function getUrgencyBadgeClass(urgencyLevel) {
-    switch(urgencyLevel) {
-        case 'Alta':
-            return 'bg-danger';
-        case 'Media':
-            return 'bg-warning';
-        case 'Baja':
-            return 'bg-success';
-        default:
-            return 'bg-secondary';
-    }
+  switch(urgencyLevel) {
+    case 'Alta':
+      return 'bg-danger';
+    case 'Media':
+      return 'bg-warning';
+    case 'Baja':
+      return 'bg-success';
+    default:
+      return 'bg-secondary';
+  }
 }
 
 function escapeHtml(s) {
-    if (!s) return "";
-    return String(s).replace(/[&<>"'`=\/]/g, c =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' }[c])
-    );
+  if (!s) return "";
+  return String(s).replace(/[&<>"'`=\/]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;' }[c])
+  );
 }
 
 // Función auxiliar para notificaciones
 function showNotification(message, type = 'info') {
-    const alertClass = type === 'success' ? 'alert-success' : 
-                      type === 'error' ? 'alert-danger' : 'alert-info';
-    const icon = type === 'success' ? 'fa-check-circle' : 
-                type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
-    
-    const notification = document.createElement('div');
-    notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
-    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    notification.innerHTML = `
-        <i class="fas ${icon} me-2"></i>${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Auto-remover después de 4 segundos
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    }, 4000);
+  const alertClass = type === 'success' ? 'alert-success' : 
+                    type === 'error' ? 'alert-danger' : 'alert-info';
+  const icon = type === 'success' ? 'fa-check-circle' : 
+              type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+  
+  const notification = document.createElement('div');
+  notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+  notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+  notification.innerHTML = `
+    <i class="fas ${icon} me-2"></i>${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // Auto-remover después de 4 segundos
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.parentNode.removeChild(notification);
+    }
+  }, 4000);
 }
 
 // Función auxiliar para formatear fechas
