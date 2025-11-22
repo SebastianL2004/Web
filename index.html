@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resource CSA - Plataforma Colaborativa</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Estilos temporales para asegurar que el login se vea */
+    .modal-backdrop {
+      z-index: 1040 !important;
+    }
+
+    .modal {
+      z-index: 1050 !important;
+    }
+
+    .modal.show {
+      display: block !important;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    #loginModal .modal-content {
+      border-radius: 15px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand" href="#"><i class="fas fa-school"></i> Resource CSA - Colegio Arica</a>
+      <div class="navbar-nav ms-auto">
+        <span class="nav-link" id="username">No autenticado</span>
+        <!-- CORREGIDO: Cambiado de <a> a <button> y corregido el ID -->
+        <button class="btn btn-outline-light btn-sm ms-2" id="logoutBtn" style="display:none" onclick="logout()">
+          <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4" id="mainContent" style="display:none">
+    <!-- VISTA DIRECTOR MEJORADA - NUEVO LAYOUT -->
+    <div id="directorView" style="display:none">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">Panel de Control - Director</h3>
+        <div class="text-muted">
+          <small>Vista de supervisión y comentarios</small>
+        </div>
+      </div>
+
+      <div class="director-dashboard">
+        <!-- Rectángulo vertical docentes -->
+        <div class="card teachers-vertical-card">
+          <div class="card-header card-header-director">
+            <h5 class="mb-0"><i class="fas fa-users me-2"></i>Docentes Conectados</h5>
+          </div>
+          <div class="card-body" id="onlineTeachersDirector">
+            <div class="loading"></div>
+          </div>
+        </div>
+
+        <!-- Proyectos Colaborativos (ARRIBA) -->
+        <div class="director-sidebar">
+          <div class="card director-card">
+            <div class="card-header card-header-director-projects">
+              <h5 class="mb-0"><i class="fas fa-users me-2"></i>Proyectos Colaborativos</h5>
+            </div>
+            <div class="card-body" id="collaborativeProjectsDirector">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solicitudes PIE (ABAJO) -->
+        <div class="director-main-content">
+          <div class="card director-card">
+            <div class="card-header card-header-director-pie">
+              <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Solicitudes de Hora con PIE</h5>
+            </div>
+            <div class="card-body" id="pieRequestsListDirector">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISTA PROFESOR MEJORADA -->
+    <div id="teacherView" style="display:none">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">Mis Recursos y Proyectos</h3>
+        <div class="text-muted">
+          <small>Plataforma Colaborativa - Panel del Docente</small>
+        </div>
+      </div>
+
+      <!-- Botones de acción mejorados -->
+      <div class="teacher-actions">
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
+          <i class="fas fa-upload"></i> Subir Contenido
+        </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#schedulePieModal">
+          <i class="fas fa-calendar-plus"></i> Solicitar Hora PIE
+        </button>
+        <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#collaborativeProjectModal">
+          <i class="fas fa-users"></i> Crear Proyecto
+        </button>
+      </div>
+
+      <div class="teacher-dashboard">
+        <!-- Columna izquierda: Archivos subidos (más ancha) -->
+        <div class="teacher-main-content">
+          <div class="card h-100">
+            <div class="card-header card-header-files">
+              <h5 class="mb-0"><i class="fas fa-folder-open me-2"></i>Mis Archivos Subidos</h5>
+            </div>
+            <div class="card-body scrollable-card" id="projectsList">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna derecha: Solicitudes y Proyectos -->
+        <div class="teacher-sidebar">
+          <!-- Solicitudes PIE -->
+          <div class="card">
+            <div class="card-header card-header-pie">
+              <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Mis Solicitudes PIE</h5>
+            </div>
+            <div class="card-body scrollable-card" id="myPieRequests">
+              <div class="loading"></div>
+            </div>
+          </div>
+
+          <!-- Proyectos Colaborativos -->
+          <div class="card">
+            <div class="card-header card-header-projects">
+              <h5 class="mb-0"><i class="fas fa-users me-2"></i>Mis Proyectos Colaborativos</h5>
+            </div>
+            <div class="card-body scrollable-card" id="myCollaborativeProjects">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISTA ASISTENTE MEJORADA - NUEVO LAYOUT -->
+    <div id="assistantView" style="display:none">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">Panel de Control - Asistente PIE</h3>
+        <div class="text-muted">
+          <small>Gestión de solicitudes y proyectos</small>
+        </div>
+      </div>
+
+      <div class="assistant-dashboard">
+        <!-- Rectángulo vertical docentes -->
+        <div class="card teachers-vertical-card">
+          <div class="card-header card-header-assistant">
+            <h5 class="mb-0"><i class="fas fa-users me-2"></i>Docentes Conectados</h5>
+          </div>
+          <div class="card-body" id="onlineTeachersAssistant">
+            <div class="loading"></div>
+          </div>
+        </div>
+
+        <!-- Proyectos Colaborativos (ARRIBA) -->
+        <div class="assistant-sidebar">
+          <div class="card assistant-card">
+            <div class="card-header card-header-assistant-projects">
+              <h5 class="mb-0"><i class="fas fa-users me-2"></i>Proyectos Colaborativos</h5>
+            </div>
+            <div class="card-body" id="collaborativeProjectsAssistant">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solicitudes PIE (ABAJO) -->
+        <div class="assistant-main-content">
+          <div class="card assistant-card">
+            <div class="card-header card-header-assistant-pie">
+              <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Solicitudes de Hora con PIE</h5>
+            </div>
+            <div class="card-body" id="pieRequestsListAssistant">
+              <div class="loading"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión</h5>
+        </div>
+        <div class="modal-body">
+          <form id="loginForm">
+            <div class="mb-3">
+              <label class="form-label">Correo electrónico</label>
+              <input type="email" id="loginEmail" class="form-control" placeholder="tu@email.com" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Contraseña</label>
+              <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required>
+            </div>
+            <button class="btn btn-primary w-100 py-2" type="submit">
+              <i class="fas fa-sign-in-alt me-2"></i>Ingresar
+            </button>
+          </form>
+          <hr>
+          <div class="text-center">
+            <small>¿No tienes cuenta?
+              <a href="#" class="text-primary fw-bold" data-bs-target="#registerModal" data-bs-toggle="modal"
+                data-bs-dismiss="modal">
+                Regístrate aquí
+              </a>
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Register Modal -->
+  <div class="modal fade" id="registerModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Registro de Usuario</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="registerForm">
+            <div class="mb-3">
+              <label class="form-label">Nombre completo</label>
+              <input type="text" id="regName" class="form-control" placeholder="Juan Pérez" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Correo electrónico</label>
+              <input type="email" id="regEmail" class="form-control" placeholder="juan@email.com" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Contraseña</label>
+              <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Rol</label>
+              <select id="regRole" class="form-select" required>
+                <option value="">Seleccionar rol...</option>
+                <option value="director">Director</option>
+                <option value="profesor">Profesor</option>
+                <option value="asistente">Asistente PIE</option>
+              </select>
+            </div>
+            <button class="btn btn-success w-100 py-2" type="submit">
+              <i class="fas fa-user-plus me-2"></i>Registrar
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Subir Contenido Completo -->
+  <div class="modal fade" id="uploadContentModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Subir Contenido</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="uploadContentForm">
+            <div class="mb-3">
+              <label class="form-label">Título del proyecto</label>
+              <input id="contentTitle" class="form-control" placeholder="Ej: Guía de Matemáticas - Fracciones" required>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Asignatura</label>
+              <input id="contentSubject" class="form-control" placeholder="Ej: Matemáticas, Lenguaje, Ciencias..."
+                required>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Descripción</label>
+              <textarea id="contentDescription" class="form-control" rows="3"
+                placeholder="Describe el contenido que estás subiendo..." required></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Archivo (Word, PDF, Video, etc)</label>
+              <input type="file" id="contentFile" class="form-control" required>
+              <small class="text-muted">Formatos soportados: PDF, Word, Excel, PowerPoint, imágenes, video</small>
+            </div>
+
+            <button class="btn btn-success w-100 py-2" type="submit">
+              <i class="fas fa-upload me-2"></i>Guardar y Subir
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para Asignar Hora con PIE -->
+  <div class="modal fade" id="schedulePieModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-info text-white">
+          <h5 class="modal-title"><i class="fas fa-calendar-plus me-2"></i>Solicitar Hora con PIE</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="schedulePieForm">
+            <!-- Datos del Estudiante -->
+            <div class="form-section mb-4">
+              <h6 class="section-title">Datos del Estudiante</h6>
+              <div class="mb-3">
+                <label class="form-label">Nombre completo del estudiante *</label>
+                <input type="text" id="studentName" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Curso *</label>
+                <input type="text" id="studentGrade" class="form-control" placeholder="Ej: 4°A, 7°B" required>
+              </div>
+            </div>
+
+            <!-- Datos del Apoderado -->
+            <div class="form-section mb-4">
+              <h6 class="section-title">Datos del Apoderado</h6>
+              <div class="mb-3">
+                <label class="form-label">Nombre completo del apoderado *</label>
+                <input type="text" id="parentName" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Teléfono *</label>
+                <input type="tel" id="parentPhone" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Correo electrónico *</label>
+                <input type="email" id="parentEmail" class="form-control" required>
+              </div>
+            </div>
+
+            <!-- Solicitud de Hora -->
+            <div class="form-section mb-4">
+              <h6 class="section-title">Solicitud de Hora</h6>
+              <div class="mb-3">
+                <label class="form-label">Asignatura *</label>
+                <select id="subjectRequest" class="form-select" required>
+                  <option value="">Seleccionar asignatura...</option>
+                  <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
+                  <option value="Matemáticas">Matemáticas</option>
+                  <option value="Historia">Historia</option>
+                  <option value="Ciencias">Ciencias</option>
+                  <option value="Inglés">Inglés</option>
+                  <option value="Arte">Arte</option>
+                  <option value="Música">Música</option>
+                  <option value="Educación Física">Educación Física</option>
+                  <option value="Tecnología">Tecnología</option>
+                  <option value="Otra">Otra</option>
+                </select>
+              </div>
+
+              <!-- Fecha Preferida -->
+              <div class="mb-3">
+                <label class="form-label">Fecha preferida *</label>
+                <input type="date" id="preferredDate" class="form-control" required>
+              </div>
+
+              <!-- Hora Preferida -->
+              <div class="mb-3">
+                <label class="form-label">Hora preferida *</label>
+                <input type="time" id="preferredTime" class="form-control" required>
+              </div>
+
+              <!-- Días Alternativos -->
+              <div class="mb-3">
+                <label class="form-label">Días alternativos de preferencia</label>
+                <select id="preferredDays" class="form-select" multiple>
+                  <option value="Lunes">Lunes</option>
+                  <option value="Martes">Martes</option>
+                  <option value="Miércoles">Miércoles</option>
+                  <option value="Jueves">Jueves</option>
+                  <option value="Viernes">Viernes</option>
+                </select>
+                <small class="text-muted">Mantén presionada la tecla Ctrl para seleccionar múltiples días</small>
+              </div>
+
+              <!-- Descripción -->
+              <div class="mb-3">
+                <label class="form-label">Descripción del caso/refuerzo *</label>
+                <textarea id="caseDescription" class="form-control" rows="4"
+                  placeholder="Describa detalladamente la situación del estudiante, áreas que necesita refuerzo, observaciones importantes..."
+                  required></textarea>
+              </div>
+
+              <!-- Tipo de Atención -->
+              <div class="mb-3">
+                <label class="form-label">Tipo de atención requerida</label>
+                <select id="attentionType" class="form-select">
+                  <option value="">Seleccionar tipo...</option>
+                  <option value="Refuerzo académico">Refuerzo académico</option>
+                  <option value="Evaluación psicopedagógica">Evaluación psicopedagógica</option>
+                  <option value="Seguimiento personalizado">Seguimiento personalizado</option>
+                  <option value="Adecuación curricular">Adecuación curricular</option>
+                  <option value="Orientación">Orientación</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+
+              <!-- Urgencia -->
+              <div class="mb-3">
+                <label class="form-label">Nivel de urgencia</label>
+                <select id="urgencyLevel" class="form-select">
+                  <option value="Baja">Baja</option>
+                  <option value="Media" selected>Media</option>
+                  <option value="Alta">Alta</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="alert alert-info">
+              <small><i class="fas fa-info-circle"></i> Todos los campos marcados con * son obligatorios. La solicitud
+                será revisada por el equipo PIE.</small>
+            </div>
+
+            <button class="btn btn-info w-100 py-2" type="submit">
+              <i class="fas fa-paper-plane me-2"></i> Enviar Solicitud
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para Proyecto Colaborativo MEJORADO -->
+  <div class="modal fade" id="collaborativeProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-warning text-white">
+          <h5 class="modal-title"><i class="fas fa-users me-2"></i>Crear Proyecto Colaborativo</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="collaborativeProjectForm">
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Nombre del Proyecto *</label>
+                  <input type="text" id="projectName" class="form-control"
+                    placeholder="Ej: Proyecto de Ciencias - Ecosistemas" required>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Docente Colaborador *</label>
+                  <select id="projectTeacher" class="form-select" required>
+                    <option value="">Seleccionar docente...</option>
+                    <!-- Los docentes se cargarán dinámicamente desde la base de datos -->
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Fecha de Inicio *</label>
+                  <input type="date" id="projectStartDate" class="form-control" required>
+                  <div class="invalid-feedback" id="dateError">
+                    La fecha debe ser igual o posterior a la fecha actual.
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Duración (semanas) *</label>
+                  <input type="number" id="projectDuration" class="form-control" min="1" max="52" placeholder="4"
+                    required>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Asignatura *</label>
+              <select id="projectSubject" class="form-select" required>
+                <option value="">Seleccionar asignatura...</option>
+                <option value="Lenguaje y Comunicación">Lenguaje y Comunicación</option>
+                <option value="Matemáticas">Matemáticas</option>
+                <option value="Historia">Historia</option>
+                <option value="Ciencias">Ciencias</option>
+                <option value="Inglés">Inglés</option>
+                <option value="Arte">Arte</option>
+                <option value="Música">Música</option>
+                <option value="Educación Física">Educación Física</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Otra">Otra</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Objetivo del Proyecto *</label>
+              <textarea id="projectObjective" class="form-control" rows="3"
+                placeholder="Describe el objetivo principal del proyecto colaborativo..." required></textarea>
+            </div>
+
+            <!-- NUEVA SECCIÓN PARA SUBIR ARCHIVOS -->
+            <div class="mb-4">
+              <label class="form-label">Archivos del Proyecto (Opcional)</label>
+              <div class="card border-warning">
+                <div class="card-body">
+                  <div class="mb-3">
+                    <label class="form-label">Subir archivo relacionado al proyecto</label>
+                    <input type="file" id="projectFile" class="form-control"
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4">
+                    <small class="text-muted">Formatos permitidos: PDF, Word, PowerPoint, Excel, imágenes, video</small>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Descripción del archivo</label>
+                    <textarea id="projectFileDescription" class="form-control" rows="2"
+                      placeholder="Describe brevemente el contenido del archivo..."></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ESTRATEGIAS DUA/DIVERSIFICACIÓN MEJORADO -->
+            <div class="mb-3">
+              <label class="form-label">Estrategias DUA/Diversificación</label>
+              <div class="card border-warning">
+                <div class="card-body">
+                  <div class="mb-3">
+                    <label class="form-label">Seleccionar estrategias existentes:</label>
+                    <select id="strategySelect" class="form-select">
+                      <option value="">Seleccionar estrategia...</option>
+                      <option value="Múltiples medios de representación">Múltiples medios de representación</option>
+                      <option value="Múltiples medios de acción y expresión">Múltiples medios de acción y expresión
+                      </option>
+                      <option value="Múltiples medios de compromiso">Múltiples medios de compromiso</option>
+                      <option value="Diferenciación de contenido">Diferenciación de contenido</option>
+                      <option value="Andamiaje educativo">Andamiaje educativo</option>
+                      <option value="Flexibilidad en la evaluación">Flexibilidad en la evaluación</option>
+                      <option value="Aprendizaje cooperativo">Aprendizaje cooperativo</option>
+                      <option value="Tutoría entre pares">Tutoría entre pares</option>
+                      <option value="Instrucción diferenciada">Instrucción diferenciada</option>
+                      <option value="Personalización del aprendizaje">Personalización del aprendizaje</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addSelectedStrategy()">
+                      <i class="fas fa-plus"></i> Agregar Estrategia Seleccionada
+                    </button>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label">Agregar nueva estrategia:</label>
+                    <div class="input-group">
+                      <input type="text" id="newStrategyInput" class="form-control"
+                        placeholder="Escribe una nueva estrategia...">
+                      <button type="button" class="btn btn-outline-success" onclick="addCustomStrategy()">
+                        <i class="fas fa-plus"></i> Agregar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="selected-strategies-container">
+                    <label class="form-label">Estrategias seleccionadas:</label>
+                    <div id="selectedStrategiesList" class="mt-2">
+                      <!-- Las estrategias seleccionadas aparecerán aquí -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="alert alert-info">
+              <small><i class="fas fa-info-circle"></i> Los campos marcados con * son obligatorios. Los archivos son
+                opcionales pero recomendados.</small>
+            </div>
+
+            <button class="btn btn-warning w-100 py-2" type="submit">
+              <i class="fas fa-plus-circle me-2"></i> Crear Proyecto Colaborativo
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Scripts de la aplicación - RUTAS CORREGIDAS -->
+<script type="module" src="./js/config/firebase.js"></script>
+<script type="module" src="./js/config/constants.js"></script>
+<script type="module" src="./js/config/states.js"></script>
+<script type="module" src="./js/auth/auth.js"></script>
+<script type="module" src="./js/auth/session.js"></script>
+<script type="module" src="./js/views/base.js"></script>
+<script type="module" src="./js/views/teacher.js"></script>
+<script type="module" src="./js/views/director.js"></script>
+<script type="module" src="./js/views/assistant.js"></script>
+<script type="module" src="./js/views/teacher-details.js"></script>
+<script type="module" src="./js/views/director-comments.js"></script>
+<script type="module" src="./js/services/firestore.js"></script>
+<script type="module" src="./js/services/realtime.js"></script>
+<script type="module" src="./js/services/notifications.js"></script>
+<script type="module" src="./js/services/cloudinary.js"></script>
+<script type="module" src="./js/forms/login.js"></script>
+<script type="module" src="./js/forms/register.js"></script>
+<script type="module" src="./js/forms/content.js"></script>
+<script type="module" src="./js/forms/pie-request.js"></script>
+<script type="module" src="./js/forms/collaborative.js"></script>
+<script type="module" src="./js/utils/helpers.js"></script>
+<script type="module" src="./js/utils/security.js"></script>
+<script type="module" src="./js/utils/ui.js"></script>
+<script type="module" src="./js/app.js"></script>
+
+<script type="module">
+    // ------------------ MAIN APPLICATION INITIALIZATION ------------------
+    import { auth } from './js/config/firebase.js';
+    import { onAuthStateChanged, logout } from './js/auth/auth.js'; // IMPORTAR logout DIRECTAMENTE
+    import { setupLoginForm, setupRegisterForm } from './js/forms/login.js';
+    import { setupContentUploadForm } from './js/forms/content.js';
+    import { setupPieRequestForm } from './js/forms/pie-request.js';
+    import { setupCollaborativeProjectForm } from './js/forms/collaborative.js';
+    import { initializeRealtimeIndicator } from './js/services/realtime.js';
+
+    // Variable para controlar si ya se manejó la autenticación
+    let authHandled = false;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('DOM cargado - Inicializando aplicación...');
+
+        // Ocultar contenido principal inicialmente
+        document.getElementById("mainContent").style.display = "none";
+        document.getElementById("directorView").style.display = "none";
+        document.getElementById("teacherView").style.display = "none";
+        document.getElementById("assistantView").style.display = "none";
+
+        // Limpiar cualquier estado previo
+        cleanupModals();
+
+        // Configurar listeners de formularios
+        setupLoginForm();
+        setupRegisterForm();
+        setupContentUploadForm();
+        setupPieRequestForm();
+        setupCollaborativeProjectForm();
+
+        // Configurar observador de autenticación
+        auth.onAuthStateChanged((user) => {
+            console.log('🔐 onAuthStateChanged llamado, usuario:', user ? 'SÍ' : 'NO');
+            
+            // Marcar que ya se manejó la autenticación
+            authHandled = true;
+            
+            // Llamar a la función principal de autenticación
+            onAuthStateChanged(user);
+        });
+
+        // Inicializar indicador de tiempo real
+        initializeRealtimeIndicator();
+
+        // Verificar después de un tiempo si no se ha manejado la autenticación
+        setTimeout(() => {
+            // Si no se ha manejado la autenticación Y no hay usuario, mostrar login
+            if (!authHandled && !auth.currentUser) {
+                console.log('⏰ Timeout: Mostrando modal de login...');
+                showLoginModal();
+            } else if (auth.currentUser) {
+                console.log('✅ Sesión existente detectada, no mostrar login');
+            }
+        }, 1500);
+    });
+
+    // Función para mostrar el modal de login
+    function showLoginModal() {
+        console.log('🚪 Mostrando modal de login...');
+        const modalElement = document.getElementById('loginModal');
+        if (modalElement) {
+            const modalInstance = new bootstrap.Modal(modalElement, {
+                backdrop: 'static',
+                keyboard: false
+            });
+            modalInstance.show();
+            
+            // Forzar el focus en el primer campo
+            setTimeout(() => {
+                const emailInput = document.getElementById('loginEmail');
+                if (emailInput) emailInput.focus();
+            }, 500);
+        }
+    }
+
+    // Función global para limpiar modales
+    function cleanupModals() {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => {
+            backdrop.remove();
+        });
+
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = 'auto';
+        document.body.style.paddingRight = '0';
+
+        // Cerrar todos los modales abiertos
+        const modals = document.querySelectorAll('.modal.show');
+        modals.forEach(modal => {
+            modal.style.display = 'none';
+        });
+        
+        // También remover la clase 'show' de los modales
+        const allModals = document.querySelectorAll('.modal');
+        allModals.forEach(modal => {
+            modal.classList.remove('show');
+        });
+    }
+
+    // Función para verificar el estado actual de autenticación (para debugging)
+    function checkAuthStatus() {
+        console.log('🔍 Estado de autenticación actual:');
+        console.log('  - auth.currentUser:', auth.currentUser);
+        console.log('  - authHandled:', authHandled);
+        console.log('  - Persistencia:', auth.persistenceManager);
+    }
+
+    // Verificación adicional después de que todo cargue
+    window.addEventListener('load', () => {
+        console.log('📄 Página completamente cargada');
+        checkAuthStatus();
+        
+        // Verificación final después de más tiempo
+        setTimeout(() => {
+            console.log('🔍 Verificación final de autenticación:');
+            console.log('  - Usuario actual:', auth.currentUser ? auth.currentUser.email : 'Ninguno');
+            console.log('  - authHandled:', authHandled);
+            
+            // Si hay usuario pero el login está visible, ocultarlo
+            if (auth.currentUser) {
+                const loginModalElement = document.getElementById('loginModal');
+                if (loginModalElement && loginModalElement.classList.contains('show')) {
+                    console.log('⚠️  Login visible con sesión activa - Cerrando...');
+                    const modalInstance = bootstrap.Modal.getInstance(loginModalElement);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                        cleanupModals();
+                    }
+                }
+            }
+        }, 3000);
+    });
+
+    // FUNCIÓN LOGOUT SIMPLIFICADA - USANDO IMPORT DIRECTAMENTE
+    window.logout = async () => {
+        console.log('🚪 Intentando cerrar sesión...');
+        try {
+            await logout();
+            console.log('✅ Sesión cerrada exitosamente');
+        } catch (error) {
+            console.error('❌ Error al cerrar sesión:', error);
+            // Forzar limpieza incluso si hay error
+            cleanupModals();
+            document.getElementById("mainContent").style.display = "none";
+            document.getElementById("username").textContent = 'No autenticado';
+            document.getElementById("logoutBtn").style.display = 'none';
+            
+            // Mostrar login
+            setTimeout(() => {
+                showLoginModal();
+            }, 500);
+        }
+    };
+
+    // El resto de las funciones permanecen igual...
+    window.viewProject = (id) => {
+        import('./js/utils/ui.js').then(module => {
+            module.viewProject(id);
+        });
+    };
+
+    window.goBackToProjects = () => {
+        import('./js/utils/ui.js').then(module => {
+            module.goBackToProjects();
+        });
+    };
+
+    window.addComment = (id) => {
+        import('./js/services/firestore.js').then(module => {
+            module.addComment(id);
+        });
+    };
+
+    window.loadComments = (id) => {
+        import('./js/services/firestore.js').then(module => {
+            module.loadComments(id);
+        });
+    };
+
+    window.deleteProject = (id) => {
+        import('./js/services/firestore.js').then(module => {
+            module.deleteProject(id);
+        });
+    };
+
+    window.editProject = (id) => {
+        import('./js/services/firestore.js').then(module => {
+            module.editProject(id);
+        });
+    };
+
+    window.updatePieRequestStatus = (requestId, status) => {
+        import('./js/services/firestore.js').then(module => {
+            module.updatePieRequestStatus(requestId, status);
+        });
+    };
+
+    window.updateProjectStatus = (projectId, status) => {
+        import('./js/services/firestore.js').then(module => {
+            module.updateProjectStatus(projectId, status);
+        });
+    };
+
+    window.deletePieRequest = (requestId) => {
+        import('./js/services/firestore.js').then(module => {
+            module.deletePieRequest(requestId);
+        });
+    };
+
+    window.deleteCollaborativeProject = (projectId) => {
+        import('./js/services/firestore.js').then(module => {
+            module.deleteCollaborativeProject(projectId);
+        });
+    };
+
+    window.addSelectedStrategy = () => {
+        import('./js/forms/collaborative.js').then(module => {
+            module.addSelectedStrategy();
+        });
+    };
+
+    window.addCustomStrategy = () => {
+        import('./js/forms/collaborative.js').then(module => {
+            module.addCustomStrategy();
+        });
+    };
+
+    window.removeStrategy = (index) => {
+        import('./js/forms/collaborative.js').then(module => {
+            module.removeStrategy(index);
+        });
+    };
+
+    window.updateSelectedStrategiesList = () => {
+        import('./js/forms/collaborative.js').then(module => {
+            module.updateSelectedStrategiesList();
+        });
+    };
+
+    window.showPieRequestDetail = (requestId) => {
+        import('./js/views/teacher-details.js').then(module => {
+            module.showPieRequestDetail(requestId);
+        });
+    };
+
+    window.showCollaborativeProjectDetail = (projectId) => {
+        import('./js/views/teacher-details.js').then(module => {
+            module.showCollaborativeProjectDetail(projectId);
+        });
+    };
+
+    window.addDirectorComment = (projectId) => {
+        import('./js/views/director-comments.js').then(module => {
+            module.addDirectorComment(projectId);
+        });
+    };
+
+    window.deleteDirectorComment = (projectId, commentTimestamp) => {
+        import('./js/views/director-comments.js').then(module => {
+            module.deleteDirectorComment(projectId, commentTimestamp);
+        });
+    };
+
+    window.loadDirectorComments = (projectId) => {
+        import('./js/views/director-comments.js').then(module => {
+            module.loadDirectorComments(projectId);
+        });
+    };
+
+    // Función de debugging para forzar cierre de login
+    window.forceCloseLogin = () => {
+        console.log('🔄 Forzando cierre del login...');
+        cleanupModals();
+        const loginModalElement = document.getElementById('loginModal');
+        if (loginModalElement) {
+            const modalInstance = bootstrap.Modal.getInstance(loginModalElement);
+            if (modalInstance) modalInstance.hide();
+        }
+    };
+</script>
+</body>
+
+</html>
