@@ -423,70 +423,116 @@ if (typeof window.generatePassword === 'undefined') {
 }
 
 // 🔥 OPCIÓN ESPECÍFICA: Después de la lista de usuarios
-function addNuclearButton() {
+async function addNuclearButton() {
     console.log("🔍 EJECUTANDO addNuclearButton()");
     
-    const adminView = document.getElementById('adminView');
-    if (!adminView) {
-        console.error("❌ NO se encontró adminView");
-        return;
-    }
+    // 🔥 OBTENER USUARIO ACTUAL DE FIREBASE AUTH
+    let currentUser = null;
+    
+    try {
+        // Método 1: Intentar con la función global
+        if (typeof window.getCurrentUser === 'function') {
+            currentUser = window.getCurrentUser();
+            console.log("✅ Usuario obtenido de window.getCurrentUser:", currentUser);
+        }
+        
+        // Método 2: Si no funciona, usar Firebase Auth directamente
+        if (!currentUser) {
+            const auth = firebase.auth();
+            const authUser = auth.currentUser;
+            
+            if (authUser) {
+                console.log("✅ Usuario de Firebase Auth:", authUser.uid);
+                // Obtener datos adicionales de Firestore
+                const userDoc = await firebase.firestore().collection('users').doc(authUser.uid).get();
+                if (userDoc.exists) {
+                    currentUser = {
+                        uid: authUser.uid,
+                        email: authUser.email,
+                        ...userDoc.data()
+                    };
+                    console.log("✅ Datos completos del usuario:", currentUser);
+                } else {
+                    console.log("⚠️ Usuario de Auth existe pero no en Firestore");
+                }
+            }
+        }
+        
+        if (!currentUser) {
+            console.error("❌ No se pudo obtener usuario actual de ninguna fuente");
+            return;
+        }
+        
+        // 🔥 VERIFICAR SI ES ADMIN
+        if (currentUser.role !== 'admin') {
+            console.log("❌ Usuario no es administrador. Rol:", currentUser.role);
+            return;
+        }
+        
+        console.log("✅ Usuario confirmado como admin:", currentUser.email);
 
-    // Buscar si ya existe el botón nuclear
-    if (document.getElementById('nuclearButtonContainer')) {
-        console.log("ℹ️ Botón nuclear ya existe");
-        return;
-    }
+        const adminView = document.getElementById('adminView');
+        if (!adminView) {
+            console.error("❌ NO se encontró adminView");
+            return;
+        }
 
-    console.log("🎯 Insertando botón nuclear AL FINAL...");
+        // Buscar si ya existe el botón nuclear
+        if (document.getElementById('nuclearButtonContainer')) {
+            console.log("ℹ️ Botón nuclear ya existe");
+            return;
+        }
 
-    const nuclearButtonHTML = `
-        <div class="row mt-4" id="nuclearButtonContainer">
-            <div class="col-12">
-                <div class="card border-danger nuclear-section">
-                    <div class="card-header bg-danger text-white">
-                        <i class="fas fa-radiation me-2"></i>
-                        Zona Peligrosa - Eliminación Total
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text nuclear-warning-text">
-                            <strong>⚠️ ADVERTENCIA CRÍTICA:</strong> Esta acción eliminará <strong>TODOS</strong> los datos del sistema.
-                        </p>
-                        
-                        <ul class="nuclear-warning-list">
-                            <li>Todos los usuarios (excepto administrador actual)</li>
-                            <li>Todos los proyectos y archivos</li>
-                            <li>Todas las solicitudes PIE</li>
-                            <li>Todos los proyectos colaborativos</li>
-                            <li>Todos los comentarios y registros</li>
-                        </ul>
-                        
-                        <p class="card-text text-muted mb-3">
-                            <small>
-                                <strong>🚨 ESTA ACCIÓN ES IRREVERSIBLE:</strong> 
-                                Una vez ejecutada, no podrás recuperar los datos eliminados. 
-                            </small>
-                        </p>
-                        
-                        <button 
-                            class="btn btn-nuclear w-100 py-3"
-                            onclick="showNuclearConfirmation()"
-                            id="nuclearButton"
-                        >
-                            <i class="fas fa-bomb me-2"></i>
-                            ELIMINAR TODOS LOS DATOS DE LA BASE DE DATOS
-                        </button>
+        console.log("🎯 Insertando botón nuclear...");
+
+        const nuclearButtonHTML = `
+            <div class="row mt-4" id="nuclearButtonContainer">
+                <div class="col-12">
+                    <div class="card border-danger nuclear-section">
+                        <div class="card-header bg-danger text-white">
+                            <i class="fas fa-radiation me-2"></i>
+                            Zona Peligrosa - Eliminación Total
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text nuclear-warning-text">
+                                <strong>⚠️ ADVERTENCIA CRÍTICA:</strong> Esta acción eliminará <strong>TODOS</strong> los datos del sistema.
+                            </p>
+                            
+                            <ul class="nuclear-warning-list">
+                                <li>Todos los usuarios (excepto administrador actual)</li>
+                                <li>Todos los proyectos y archivos</li>
+                                <li>Todas las solicitudes PIE</li>
+                                <li>Todos los proyectos colaborativos</li>
+                                <li>Todos los comentarios y registros</li>
+                            </ul>
+                            
+                            <p class="card-text text-muted mb-3">
+                                <small>
+                                    <strong>🚨 ESTA ACCIÓN ES IRREVERSIBLE:</strong> 
+                                    Una vez ejecutada, no podrás recuperar los datos eliminados. 
+                                </small>
+                            </p>
+                            
+                            <button 
+                                class="btn btn-nuclear w-100 py-3"
+                                onclick="showNuclearConfirmation()"
+                                id="nuclearButton"
+                            >
+                                <i class="fas fa-bomb me-2"></i>
+                                ELIMINAR TODOS LOS DATOS DE LA BASE DE DATOS
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
 
-    // 🔥 SOLUCIÓN SIMPLE: Insertar al final de todo
-    adminView.insertAdjacentHTML('beforeend', nuclearButtonHTML);
-    
-    console.log("✅ Botón nuclear insertado AL FINAL");
-    console.log("🔍 Verificando inserción:", !!document.getElementById('nuclearButtonContainer'));
+        adminView.insertAdjacentHTML('beforeend', nuclearButtonHTML);
+        console.log("✅ Botón nuclear insertado para admin:", currentUser.email);
+
+    } catch (error) {
+        console.error("❌ Error en addNuclearButton:", error);
+    }
 }
 // 🔥 FUNCIÓN PARA MOSTRAR CONFIRMACIÓN
 window.showNuclearConfirmation = function() {
@@ -561,6 +607,15 @@ window.showNuclearConfirmation = function() {
 
 // 🔥 EJECUTAR ELIMINACIÓN TOTAL
 async function executeNuclearOption() {
+    // 🔥 VERIFICACIÓN SIMPLIFICADA
+    const auth = firebase.auth();
+    const authUser = auth.currentUser;
+    
+    if (!authUser) {
+        showRealtimeNotification('❌ No hay usuario autenticado', 'danger');
+        return;
+    }
+
     const submitBtn = document.getElementById('confirmNuclearButton');
     const originalText = submitBtn.innerHTML;
     
