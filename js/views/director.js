@@ -1,0 +1,654 @@
+// ------------------ DIRECTOR VIEW FUNCTIONS ------------------
+import { db, rdb } from '../config/firebase.js';
+import { currentUser, realtimeSubscriptions } from '../config/constants.js';
+import { escapeHtml } from '../utils/security.js';
+import { showRealtimeNotification } from '../services/notifications.js'; // 
+
+export function loadOnlineTeachersForDirector() {
+    const el = document.getElementById("onlineTeachersDirector");
+    if (!el) {
+        console.error("❌ No se encontró el elemento onlineTeachersDirector");
+        return;
+    }
+
+    el.innerHTML = "<div class='loading-container'><div class='loading'></div><p>Cargando docentes...</p></div>";
+
+    // Limpiar suscripciones anteriores
+    if (realtimeSubscriptions.onlineTeachers) {
+        realtimeSubscriptions.onlineTeachers();
+    }
+
+    // Limpiar listeners de presencia anteriores
+    if (realtimeSubscriptions.directorPresenceListeners) {
+        realtimeSubscriptions.directorPresenceListeners.forEach(({ uid, listener }) => {
+            rdb.ref("presence/" + uid).off("value", listener);
+        });
+    }
+
+    console.log("🔍 Director: Iniciando escucha en tiempo real...");
+
+    // 1. Obtener lista de docentes
+    realtimeSubscriptions.onlineTeachers = db.collection("users")
+        .where("role", "==", "profesor")
+        .onSnapshot((snap) => {
+            console.log("📊 Director: Datos de docentes recibidos", snap.size);
+
+            if (snap.empty) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-users-slash"></i>
+                        <p>No hay docentes registrados</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const teachers = [];
+            snap.forEach(doc => {
+                teachers.push({
+                    uid: doc.id,
+                    name: doc.data().name,
+                    isOnline: false
+                });
+            });
+
+            // Función para actualizar la UI
+            const updateUI = () => {
+                const onlineTeachers = [];
+                const offlineTeachers = [];
+
+                teachers.forEach(teacher => {
+                    const teacherHTML = `
+                        <div class="teacher-status-item ${teacher.isOnline ? 'online' : 'offline'}">
+                            <div class="d-flex align-items-center">
+                                <span class="dot ${teacher.isOnline ? 'dot-online' : 'dot-offline'} me-3"></span>
+                                <div class="teacher-info">
+                                    <span class="teacher-name d-block">${escapeHtml(teacher.name)}</span>
+                                    <span class="teacher-role small text-muted">
+                                        ${teacher.isOnline ? '🟢 Conectado ahora' : '🔴 Desconectado'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    if (teacher.isOnline) {
+                        onlineTeachers.push(teacherHTML);
+                    } else {
+                        offlineTeachers.push(teacherHTML);
+                    }
+                });
+
+                const allTeachers = [...onlineTeachers, ...offlineTeachers];
+                el.innerHTML = allTeachers.join('');
+            };
+
+            // Renderizar inicialmente
+            updateUI();
+
+            // 2. ESCUCHAR CAMBIOS EN TIEMPO REAL de cada docente - API LEGACY
+            const presenceListeners = [];
+
+            teachers.forEach(teacher => {
+                const presenceRef = rdb.ref(`presence/${teacher.uid}`);
+
+                const presenceListener = presenceRef.on("value", (snapshot) => {
+                    const isOnline = snapshot.exists() && snapshot.val() === true;
+
+                    console.log(`👤 Director: ${teacher.name} - ${isOnline ? 'CONECTADO' : 'DESCONECTADO'}`);
+
+                    // Actualizar el estado del docente
+                    teacher.isOnline = isOnline;
+                    // Actualizar la UI inmediatamente
+                    updateUI();
+                }, (error) => {
+                    console.error(`❌ Error escuchando presencia de ${teacher.name}:`, error);
+                });
+
+                presenceListeners.push({
+                    uid: teacher.uid,
+                    listener: presenceListener
+                });
+            });
+
+            // Guardar los listeners para limpiarlos después
+            realtimeSubscriptions.directorPresenceListeners = presenceListeners;
+
+        }, (error) => {
+            console.error("❌ Error cargando docentes:", error);
+            el.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Error al cargar docentes</p>
+                </div>
+            `;
+        });
+}
+
+// Función global para limpiar
+window.loadOnlineTeachersForDirector = loadOnlineTeachersForDirector;
+export function loadPieRequestsForDirector() {
+    const el = document.getElementById("pieRequestsListDirector");
+
+    if (realtimeSubscriptions.pieRequests) {
+        realtimeSubscriptions.pieRequests();
+    }
+
+    realtimeSubscriptions.pieRequests = db.collection("pieRequests")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            el.innerHTML = "";
+
+            if (snap.empty) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-clock"></i>
+                        <p>No hay solicitudes pendientes</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let hasNewItems = false;
+
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    hasNewItems = true;
+                }
+            });
+
+            snap.forEach(doc => {
+                const request = { id: doc.id, ...doc.data() };
+                const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+                const isCompleted = request.status === 'completada';
+                const isNew = hasNewItems && doc.metadata.hasPendingWrites;
+
+                el.innerHTML += `
+                    <div class="pie-request-item ${isCompleted ? 'completed' : ''} ${isNew ? 'realtime-update' : ''}">
+                        <div class="pie-request-header">
+                            <div class="pie-request-student">
+                                ${escapeHtml(request.studentName)} - ${escapeHtml(request.studentGrade)}
+                                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
+                            </div>
+                            <span class="badge badge-${request.status}">${request.status}</span>
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Solicitado por:</strong> ${escapeHtml(request.requestedByName)} | 
+                            <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)} | 
+                            <strong>Fecha y Hora:</strong> ${request.formattedDate || 'No especificada'} ${request.formattedTime || ''}
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Tipo de atención:</strong> ${escapeHtml(request.attentionType || 'No especificado')} | 
+                            <strong>Urgencia:</strong> <span class="badge ${getUrgencyBadgeClass(request.urgencyLevel)}">${escapeHtml(request.urgencyLevel || 'Media')}</span>
+                        </div>
+                        <div class="pie-request-description">
+                            <strong>Descripción:</strong> ${escapeHtml(request.caseDescription)}
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Apoderado:</strong> ${escapeHtml(request.parentName)} | 
+                            <strong>Teléfono:</strong> ${escapeHtml(request.parentPhone)} | 
+                            <strong>Email:</strong> ${escapeHtml(request.parentEmail)}
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Días alternativos:</strong> ${request.preferredDays && request.preferredDays.length > 0 ? request.preferredDays.join(', ') : 'No especificados'} | 
+                            <strong>Fecha solicitud:</strong> ${requestDate}
+                        </div>
+                        <div class="pie-request-actions">
+                            <small class="text-muted">Solo vista - Las ediciones las realiza el asistente PIE</small>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (hasNewItems && currentUser.role === 'director') {
+                showRealtimeNotification('Nueva solicitud PIE recibida', 'info', 'solicitó');
+            }
+        }, error => {
+            console.error("Error en tiempo real de solicitudes PIE (director):", error);
+        });
+}
+
+export function loadCollaborativeProjectsForDirector() {
+    const el = document.getElementById("collaborativeProjectsDirector");
+
+    if (realtimeSubscriptions.collaborativeProjects) {
+        realtimeSubscriptions.collaborativeProjects();
+    }
+
+    realtimeSubscriptions.collaborativeProjects = db.collection("collaborativeProjects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            el.innerHTML = "";
+
+            if (snap.empty) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-users"></i>
+                        <p>No hay proyectos colaborativos</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let hasNewItems = false;
+
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    hasNewItems = true;
+                }
+            });
+
+            snap.forEach(doc => {
+                const project = { id: doc.id, ...doc.data() };
+                const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+                const endDate = project.startDate && project.duration ?
+                    new Date(new Date(project.startDate).getTime() + project.duration * 7 * 24 * 60 * 60 * 1000).toLocaleDateString() : "No calculada";
+
+                // NUEVO: Obtener fecha y hora de creación
+                const createdAt = project.createdAt ?
+                    new Date(project.createdAt.seconds * 1000) : new Date();
+                const creationDate = createdAt.toLocaleDateString();
+                const creationTime = createdAt.toLocaleTimeString('es-CL', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                const isNew = hasNewItems && doc.metadata.hasPendingWrites;
+
+                el.innerHTML += `
+                    <div class="collaborative-project-item ${isNew ? 'realtime-update' : ''}">
+                        <div class="collaborative-project-header">
+                            <div class="collaborative-project-title">
+                                ${escapeHtml(project.name)}
+                                ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
+                            </div>
+                            <span class="badge bg-warning">Proyecto</span>
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
+                            <strong>Docente:</strong> ${escapeHtml(project.teacher)} | 
+                            <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Inicio:</strong> ${startDate} | 
+                            <strong>Duración:</strong> ${project.duration} semanas | 
+                            <strong>Fin estimado:</strong> ${endDate}
+                        </div>
+                        <!-- NUEVA LÍNEA: Mostrar fecha y hora de creación -->
+                        <div class="collaborative-project-meta">
+                            <strong>Creado el:</strong> ${creationDate} a las ${creationTime}
+                        </div>
+                        <div class="collaborative-project-objective">
+                            <strong>Objetivo:</strong> ${escapeHtml(project.objective)}
+                        </div>
+                        ${project.strategies && project.strategies.length > 0 ? `
+                            <div class="collaborative-project-strategies">
+                                <strong>Estrategias:</strong>
+                                ${project.strategies.map(strategy => `<span class="strategy-tag">${escapeHtml(strategy)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="director-comments-section mt-4">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-comment-dots"></i> Comentarios del Director
+                                        <span class="badge bg-light text-primary ms-2" id="commentCount-${project.id}">
+                                            ${project.directorComments ? project.directorComments.length : 0}
+                                        </span>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="directorComments-${project.id}" class="mb-3">
+                                        <div class="loading"></div>
+                                    </div>
+                                    
+                                    <div class="new-director-comment">
+                                        <textarea class="form-control" id="newDirectorComment-${project.id}" 
+                                                placeholder="Escribe tu comentario o retroalimentación para el profesor..." 
+                                                rows="3"></textarea>
+                                        <button class="btn btn-primary btn-sm mt-2" onclick="addDirectorComment('${project.id}')">
+                                            <i class="fas fa-paper-plane"></i> Enviar Comentario
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                setTimeout(() => loadDirectorComments(project.id), 100);
+            });
+
+            if (hasNewItems && currentUser.role === 'director') {
+                showRealtimeNotification('Nuevo proyecto colaborativo creado', 'warning', 'creó');
+            }
+        }, error => {
+            console.error("Error en tiempo real de proyectos colaborativos (director):", error);
+        });
+}
+export function loadAllProjectsForDirector() {
+    db.collection("projects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const project = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `El profesor ${escapeHtml(project.uploadedByName || 'Un profesor')} subió: "${escapeHtml(project.title)}"`,
+                        'success',
+                        'subió'
+                    );
+                }
+            });
+        });
+
+    db.collection("collaborativeProjects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const project = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `Nuevo proyecto colaborativo: "${escapeHtml(project.name)}" por ${escapeHtml(project.createdByName)}`,
+                        'warning',
+                        'creó'
+                    );
+                }
+            });
+        });
+
+    db.collection("pieRequests")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const request = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `Nueva solicitud PIE para ${escapeHtml(request.studentName)} de ${escapeHtml(request.requestedByName)}`,
+                        'info',
+                        'solicitó'
+                    );
+                }
+            });
+        });
+}
+
+
+// ------------------ DASHBOARD FUNCTIONS ------------------
+export async function loadDirectorDashboard() {
+    console.log("📊 Cargando dashboard del director...");
+    
+    const dashboardEl = document.getElementById('metricsDashboard');
+    if (!dashboardEl) {
+        console.error("❌ No se encontró el elemento metricsDashboard");
+        return;
+    }
+    
+    try {
+        console.log("🔄 Iniciando cálculo de métricas...");
+        const metrics = await calculateDashboardMetrics();
+        console.log("✅ Métricas calculadas:", metrics);
+        renderDashboardMetrics(metrics);
+        
+    } catch (error) {
+        console.error("❌ Error cargando dashboard:", error);
+        dashboardEl.innerHTML = `
+            <div class="col-12 text-center text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <p>Error al cargar las métricas</p>
+                <small>${error.message}</small>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadDirectorDashboard()">
+                    Reintentar
+                </button>
+            </div>
+        `;
+    }
+}
+async function calculateDashboardMetrics() {
+    console.log("📈 Calculando métricas del dashboard...");
+
+    // Obtener todos los datos necesarios
+    const [teachers, projects, pieRequests, collaborativeProjects] = await Promise.all([
+        db.collection("users").where("role", "==", "profesor").get(),
+        db.collection("projects").get(),
+        db.collection("pieRequests").get(),
+        db.collection("collaborativeProjects").get()
+    ]);
+
+    console.log("✅ Datos obtenidos:", {
+        teachers: teachers.size,
+        projects: projects.size,
+        pieRequests: pieRequests.size,
+        collaborativeProjects: collaborativeProjects.size
+    });
+
+    // Calcular métricas
+    const totalTeachers = teachers.size;
+    const totalProjects = projects.size;
+    const totalPieRequests = pieRequests.size;
+    const totalCollaborativeProjects = collaborativeProjects.size;
+
+    // Docentes conectados (usando presencia)
+    let onlineTeachers = 0;
+    const presencePromises = [];
+
+    teachers.forEach(doc => {
+        const presencePromise = rdb.ref(`presence/${doc.id}`).once('value')
+            .then(snapshot => {
+                if (snapshot.exists() && snapshot.val() === true) {
+                    onlineTeachers++;
+                }
+            });
+        presencePromises.push(presencePromise);
+    });
+
+    await Promise.all(presencePromises);
+
+    // Solicitudes PIE completadas
+    const completedPieRequests = pieRequests.docs.filter(doc =>
+        doc.data().status === 'completada' || doc.data().status === 'completed'
+    ).length;
+
+    // Proyectos colaborativos completados
+    const completedCollaborativeProjects = collaborativeProjects.docs.filter(doc =>
+        doc.data().status === 'completado' || doc.data().status === 'completed'
+    ).length;
+
+    // Horas trabajadas (estimado basado en proyectos)
+    const estimatedHours = totalProjects * 2 + totalCollaborativeProjects * 5;
+
+    return {
+        totalTeachers,
+        onlineTeachers,
+        totalProjects,
+        totalPieRequests,
+        completedPieRequests,
+        totalCollaborativeProjects,
+        completedCollaborativeProjects,
+        estimatedHours,
+        onlinePercentage: totalTeachers > 0 ? Math.round((onlineTeachers / totalTeachers) * 100) : 0,
+        pieCompletionRate: totalPieRequests > 0 ? Math.round((completedPieRequests / totalPieRequests) * 100) : 0,
+        collaborativeCompletionRate: totalCollaborativeProjects > 0 ? Math.round((completedCollaborativeProjects / totalCollaborativeProjects) * 100) : 0
+    };
+}
+
+function renderDashboardMetrics(metrics) {
+    const dashboardEl = document.getElementById('metricsDashboard');
+
+    dashboardEl.innerHTML = `
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-users fa-2x mb-2"></i>
+                    <h3>${metrics.onlineTeachers}/${metrics.totalTeachers}</h3>
+                    <p class="mb-0">Docentes Conectados</p>
+                    <small>${metrics.onlinePercentage}% en línea</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-project-diagram fa-2x mb-2"></i>
+                    <h3>${metrics.completedCollaborativeProjects}/${metrics.totalCollaborativeProjects}</h3>
+                    <p class="mb-0">Proyectos Colaborativos</p>
+                    <small>${metrics.collaborativeCompletionRate}% completados</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-clock fa-2x mb-2"></i>
+                    <h3>${metrics.estimatedHours}+</h3>
+                    <p class="mb-0">Horas Trabajadas</p>
+                    <small>Estimado total</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-tasks fa-2x mb-2"></i>
+                    <h3>${metrics.completedPieRequests}/${metrics.totalPieRequests}</h3>
+                    <p class="mb-0">Solicitudes PIE</p>
+                    <small>${metrics.pieCompletionRate}% completadas</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">Resumen General</h6>
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="border-end">
+                                <h4 class="text-primary">${metrics.totalProjects}</h4>
+                                <small class="text-muted">Proyectos Totales</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border-end">
+                                <h4 class="text-success">${metrics.totalCollaborativeProjects}</h4>
+                                <small class="text-muted">Proyectos Colaborativos</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div>
+                                <h4 class="text-info">${metrics.totalPieRequests}</h4>
+                                <small class="text-muted">Solicitudes PIE Totales</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Función para generar reporte (se llamará desde el HTML)
+window.generateReport = async function () {
+    console.log("📄 Generando reporte...");
+
+    try {
+        const metrics = await calculateDashboardMetrics();
+        await generateReportImage(metrics);
+    } catch (error) {
+        console.error("❌ Error generando reporte:", error);
+        alert("Error al generar el reporte. Intenta nuevamente.");
+    }
+};
+
+async function generateReportImage(metrics) {
+    // Crear un canvas para el reporte
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
+
+    // Fondo blanco
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Encabezado
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(0, 0, canvas.width, 80);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('Reporte de Métricas - Director', 50, 40);
+
+    ctx.font = '14px Arial';
+    ctx.fillText(`Generado: ${new Date().toLocaleDateString()}`, 50, 60);
+
+    // Métricas
+    let yPosition = 150;
+    const metricsData = [
+        { label: 'Docentes Conectados', value: `${metrics.onlineTeachers}/${metrics.totalTeachers}`, color: '#3498db' },
+        { label: 'Proyectos Colaborativos', value: `${metrics.completedCollaborativeProjects}/${metrics.totalCollaborativeProjects}`, color: '#27ae60' },
+        { label: 'Horas Trabajadas', value: `${metrics.estimatedHours}+`, color: '#2980b9' },
+        { label: 'Solicitudes PIE Completadas', value: `${metrics.completedPieRequests}/${metrics.totalPieRequests}`, color: '#f39c12' },
+        { label: 'Tasa de Completitud PIE', value: `${metrics.pieCompletionRate}%`, color: '#e74c3c' },
+        { label: 'Tasa de Completitud Proyectos', value: `${metrics.collaborativeCompletionRate}%`, color: '#9b59b6' }
+    ];
+
+    metricsData.forEach((metric, index) => {
+        const xPosition = (index % 2 === 0) ? 100 : 450;
+        if (index % 2 === 0 && index !== 0) yPosition += 100;
+
+        // Círculo de métrica
+        ctx.fillStyle = metric.color;
+        ctx.beginPath();
+        ctx.arc(xPosition, yPosition, 30, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Texto del valor
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(metric.value, xPosition, yPosition + 5);
+
+        // Label
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(metric.label, xPosition, yPosition + 50);
+    });
+
+    // Pie de página
+    ctx.fillStyle = '#7f8c8d';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Colegio Arica - Plataforma Colaborativa', canvas.width / 2, canvas.height - 20);
+
+    // Convertir a imagen y descargar
+    canvas.toBlob(function (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte-director-${new Date().toISOString().split('T')[0]}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showRealtimeNotification('Reporte descargado exitosamente', 'success');
+    });
+}
+
+// 🔥 AGREGAR ESTA FUNCIÓN FALTANTE
+function getUrgencyBadgeClass(urgencyLevel) {
+    const classes = {
+        'Baja': 'bg-success',
+        'Media': 'bg-warning', 
+        'Alta': 'bg-danger'
+    };
+    return classes[urgencyLevel] || 'bg-secondary';
+}
+window.loadDirectorDashboard = loadDirectorDashboard;
+window.generateReport = generateReport
