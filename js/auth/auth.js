@@ -2,6 +2,7 @@
 import { auth, db } from '../config/firebase.js';
 import { setCurrentUser } from '../config/constants.js';
 import { cleanupRealtimeSubscriptions } from '../services/realtime.js';
+import { deleteAllUserData, checkUserHasData } from '../services/firestore.js';
 
 // 🔥 AGREGAR ESTOS IMPORTS
 import {
@@ -22,7 +23,35 @@ export function initModals() {
     return { loginModal, registerModal };
 }
 
-// Funciones de autenticación (tus funciones existentes permanecen igual)
+// 🔥 NUEVA FUNCIÓN: Verificar si email existe
+export async function checkEmailExists(email) {
+    try {
+        // Intentar crear usuario temporalmente (solo para verificar)
+        // Esto lanzará error si el email ya existe
+        const tempAuth = firebase.auth();
+        const result = await tempAuth.createUserWithEmailAndPassword(email, 'TempPassword123!');
+        
+        // Si llegamos aquí, el email NO existe, así que eliminamos el usuario temporal
+        await result.user.delete();
+        
+        return {
+            exists: false
+        };
+        
+    } catch (error) {
+        if (error.code === 'auth/email-already-in-use') {
+            return {
+                exists: true
+            };
+        }
+        return {
+            exists: false,
+            error: error.code
+        };
+    }
+}
+
+// Funciones de autenticación
 export async function loginUser(email, password) {
     try {
         const result = await auth.signInWithEmailAndPassword(email, password);
@@ -47,14 +76,20 @@ export async function registerUser(userData) {
     try {
         console.log("📝 Intentando registro con:", userData.email);
 
+        // 🔥 VERIFICAR SI EL EMAIL YA EXISTE ANTES DE CREAR
+        const emailCheck = await checkEmailExists(userData.email);
+        if (emailCheck.exists) {
+            throw new Error('auth/email-already-in-use');
+        }
+
         const cred = await auth.createUserWithEmailAndPassword(userData.email, userData.password);
 
         await db.collection('users').doc(cred.user.uid).set({
             name: userData.name,
             email: userData.email,
-            role: userData.role || 'profesor', // 🔥 VALOR POR DEFECTO
+            role: userData.role || 'profesor',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            registeredBy: 'self' // 🔥 PARA IDENTIFICAR REGISTROS AUTÓNOMOS
+            registeredBy: getCurrentUser()?.uid || 'self'
         });
 
         console.log("✅ Registro exitoso:", userData.email, "- Rol:", userData.role || 'profesor');
@@ -67,20 +102,55 @@ export async function registerUser(userData) {
     } catch (error) {
         console.error("❌ Error en registro:", error);
 
-        if (auth.currentUser) {
-            try {
-                await auth.currentUser.delete();
-            } catch (deleteError) {
-                console.error("Error eliminando usuario:", deleteError);
-            }
-        }
-
         return {
             success: false,
             error: error.code || error.message
         };
     }
 }
+
+// 🔥 FUNCIÓN: Eliminar usuario completamente
+export async function deleteUserCompletely(userId, email) {
+    try {
+        console.log("🗑️ Eliminando usuario completamente:", email, "UID:", userId);
+        
+        // 1. Verificar si el usuario tiene datos asociados
+        const dataCheck = await checkUserHasData(userId);
+        if (dataCheck.hasData) {
+            console.log("📋 Usuario tiene datos asociados que se eliminarán");
+        }
+        
+        // 2. Eliminar todos los datos de Firestore
+        const firestoreResult = await deleteAllUserData(userId);
+        if (!firestoreResult.success) {
+            throw new Error(firestoreResult.error);
+        }
+        
+        // 3. Registrar en deleted_users para tracking
+        await db.collection('deleted_users').doc(userId).set({
+            email: email,
+            deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            deletedBy: getCurrentUser()?.uid || 'admin',
+            hadAssociatedData: dataCheck.hasData
+        });
+        
+        console.log("✅ Usuario eliminado completamente del sistema");
+        
+        return {
+            success: true,
+            message: "Usuario y todos sus datos eliminados correctamente",
+            hadAssociatedData: dataCheck.hasData
+        };
+        
+    } catch (error) {
+        console.error("❌ Error eliminando usuario completamente:", error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
 // Función para actualizar la interfaz de usuario
 function updateUserInterface(userInfo) {
     console.log("🎨 Actualizando interfaz para:", userInfo ? userInfo.name : "Usuario no autenticado");
@@ -207,7 +277,8 @@ export async function onAuthStateChanged(user) {
         }, 500);
     }
 }
-// 🔥 NUEVA FUNCIÓN: Mostrar vista según rol
+
+// 🔥 FUNCIÓN: Mostrar vista según rol
 function showViewByRole(role) {
     console.log("🎯 Mostrando vista para rol:", role);
 
@@ -222,7 +293,6 @@ function showViewByRole(role) {
     }
 }
 
-// El resto de tus funciones permanecen igual...
 export function logout() {
     console.log("👋 Iniciando proceso de cierre de sesión...");
 

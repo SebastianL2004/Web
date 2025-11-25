@@ -3,6 +3,8 @@ import { db, auth } from '../config/firebase.js';
 import { currentUser, realtimeSubscriptions } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showRealtimeNotification } from '../services/notifications.js';
+import { registerUser, deleteUserCompletely } from '../auth/auth.js';
+
 
 let selectedRole = null;
 
@@ -13,6 +15,7 @@ export function initAdminView() {
     setupRoleSelectors();
     setupAdminForm();
     loadExistingUsers();
+    addNuclearButton();
 }
 
 // Configurar selectores de rol
@@ -80,9 +83,16 @@ function updateRoleSelectionUI(role) {
 function setupAdminForm() {
     const form = document.getElementById('adminRegisterForm');
     const nameInput = document.getElementById('adminUserName');
+    const emailInput = document.getElementById('emailPrefix');
 
     // Generar email cuando se escribe el nombre
     nameInput.addEventListener('input', generateEmailFromName);
+    
+    // 🔥 PERMITIR EDICIÓN MANUAL DEL EMAIL
+    if (emailInput) {
+        emailInput.readOnly = false;
+        emailInput.placeholder = "nombre.apellido o personalizado";
+    }
 
     // Manejar envío del formulario
     form.addEventListener('submit', handleAdminRegistration);
@@ -111,6 +121,10 @@ function generateEmailFromName() {
             const firstName = nameParts[0];
             const lastName = nameParts[nameParts.length - 1];
             email = firstName.charAt(0) + '.' + lastName;
+
+             // 🔥 AGREGAR TIMESTAMP PARA HACERLO ÚNICO
+            const timestamp = Date.now().toString().slice(-4);
+            email = firstName.charAt(0) + '.' + lastName + timestamp;
             
         } else if (nameParts.length === 1) {
             // Si solo hay un nombre, usarlo completo
@@ -194,8 +208,6 @@ async function handleAdminRegistration(e) {
 
     if (!password) {
         showRealtimeNotification('Por favor genera una contraseña', 'warning');
-        
-        // Enfocar y resaltar el campo de contraseña
         const passwordInput = document.getElementById('adminPassword');
         if (passwordInput) {
             passwordInput.focus();
@@ -213,39 +225,33 @@ async function handleAdminRegistration(e) {
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Creando...';
         submitBtn.disabled = true;
 
-        // Crear usuario en Firebase Auth
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-        const user = userCredential.user;
-
-        // Crear documento en Firestore
-        await db.collection('users').doc(user.uid).set({
+        // 🔥 USAR registerUser DE auth.js EN LUGAR DE CREAR DIRECTAMENTE
+        const result = await registerUser({
             name: name,
             email: email,
-            role: selectedRole,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser.uid,
-            createdByName: currentUser.name || 'Administrador'
+            password: password,
+            role: selectedRole
         });
 
-        // Cerrar sesión del usuario recién creado (volver a ser admin)
-        await auth.signOut();
-        await auth.signInWithEmailAndPassword(currentUser.email, 'Colegio2024');
+        if (result.success) {
+            // Mostrar éxito
+            showRealtimeNotification(`Usuario ${name} creado exitosamente como ${selectedRole}`, 'success');
 
-        // Mostrar éxito
-        showRealtimeNotification(`Usuario ${name} creado exitosamente como ${selectedRole}`, 'success');
+            // Resetear formulario
+            resetAdminForm();
 
-        // Resetear formulario
-        resetAdminForm();
-
-        // Recargar lista de usuarios
-        loadExistingUsers();
+            // Recargar lista de usuarios
+            loadExistingUsers();
+        } else {
+            throw new Error(result.error);
+        }
 
     } catch (error) {
         console.error('❌ Error creando usuario:', error);
 
         let errorMessage = 'Error creando usuario';
-        if (error.code === 'auth/email-already-in-use') {
-            errorMessage = 'El correo electrónico ya está en uso';
+        if (error.message === 'auth/email-already-in-use') {
+            errorMessage = 'El correo electrónico ya está en uso por otro usuario';
         } else if (error.code === 'auth/weak-password') {
             errorMessage = 'La contraseña es muy débil';
         } else if (error.code === 'auth/invalid-email') {
@@ -373,18 +379,32 @@ function getRoleBadgeColor(role) {
 
 // Función para eliminar usuario (renombrada para evitar conflictos)
 window.adminDeleteUser = async (userId, userName) => {
-    if (!confirm(`¿Estás seguro de que quieres eliminar al usuario "${userName}"?`)) {
+    if (!confirm(`¿Estás seguro de que quieres eliminar al usuario "${userName}"?\n\nEsta acción NO se puede deshacer.`)) {
         return;
     }
 
     try {
-        // Eliminar de Firestore
-        await db.collection('users').doc(userId).delete();
-        showRealtimeNotification(`Usuario ${userName} eliminado exitosamente`, 'success');
+        // 🔥 USAR deleteUserCompletely EN LUGAR DE SOLO ELIMINAR DE FIRESTORE
+        const result = await deleteUserCompletely(userId, userName);
+        
+        if (result.success) {
+            showRealtimeNotification(`Usuario ${userName} eliminado exitosamente`, 'success');
+            // La lista se actualizará automáticamente por la suscripción de onSnapshot
+        } else {
+            throw new Error(result.error);
+        }
 
     } catch (error) {
         console.error('Error eliminando usuario:', error);
-        showRealtimeNotification('Error eliminando usuario', 'danger');
+        
+        let errorMessage = 'Error eliminando usuario';
+        if (error.message.includes('permisos')) {
+            errorMessage = 'No tienes permisos para eliminar este usuario';
+        } else if (error.message.includes('no encontrado')) {
+            errorMessage = 'Usuario no encontrado';
+        }
+        
+        showRealtimeNotification(errorMessage, 'danger');
     }
 };
 
@@ -400,4 +420,344 @@ if (typeof window.generatePassword === 'undefined') {
             showRealtimeNotification(`Contraseña generada: ${password}`, 'success');
         }
     };
+}
+
+// 🔥 OPCIÓN ESPECÍFICA: Después de la lista de usuarios
+function addNuclearButton() {
+    console.log("🔍 EJECUTANDO addNuclearButton()");
+    
+    const adminView = document.getElementById('adminView');
+    if (!adminView) {
+        console.error("❌ NO se encontró adminView");
+        return;
+    }
+
+    // Buscar si ya existe el botón nuclear
+    if (document.getElementById('nuclearButtonContainer')) {
+        console.log("ℹ️ Botón nuclear ya existe");
+        return;
+    }
+
+    console.log("🎯 Insertando botón nuclear AL FINAL...");
+
+    const nuclearButtonHTML = `
+        <div class="row mt-4" id="nuclearButtonContainer">
+            <div class="col-12">
+                <div class="card border-danger nuclear-section">
+                    <div class="card-header bg-danger text-white">
+                        <i class="fas fa-radiation me-2"></i>
+                        Zona Peligrosa - Eliminación Total
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text nuclear-warning-text">
+                            <strong>⚠️ ADVERTENCIA CRÍTICA:</strong> Esta acción eliminará <strong>TODOS</strong> los datos del sistema.
+                        </p>
+                        
+                        <ul class="nuclear-warning-list">
+                            <li>Todos los usuarios (excepto administrador actual)</li>
+                            <li>Todos los proyectos y archivos</li>
+                            <li>Todas las solicitudes PIE</li>
+                            <li>Todos los proyectos colaborativos</li>
+                            <li>Todos los comentarios y registros</li>
+                        </ul>
+                        
+                        <p class="card-text text-muted mb-3">
+                            <small>
+                                <strong>🚨 ESTA ACCIÓN ES IRREVERSIBLE:</strong> 
+                                Una vez ejecutada, no podrás recuperar los datos eliminados. 
+                            </small>
+                        </p>
+                        
+                        <button 
+                            class="btn btn-nuclear w-100 py-3"
+                            onclick="showNuclearConfirmation()"
+                            id="nuclearButton"
+                        >
+                            <i class="fas fa-bomb me-2"></i>
+                            ELIMINAR TODOS LOS DATOS DE LA BASE DE DATOS
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 🔥 SOLUCIÓN SIMPLE: Insertar al final de todo
+    adminView.insertAdjacentHTML('beforeend', nuclearButtonHTML);
+    
+    console.log("✅ Botón nuclear insertado AL FINAL");
+    console.log("🔍 Verificando inserción:", !!document.getElementById('nuclearButtonContainer'));
+}
+// 🔥 FUNCIÓN PARA MOSTRAR CONFIRMACIÓN
+window.showNuclearConfirmation = function() {
+    const confirmationHTML = `
+        <div class="modal fade" id="nuclearModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-radiation me-2"></i>
+                            Confirmación de Eliminación Total
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger">
+                            <h6>🚨 ACCIÓN IRREVERSIBLE</h6>
+                            <p class="mb-2">Estás a punto de eliminar <strong>TODOS</strong> los datos del sistema:</p>
+                            <ul>
+                                <li>✅ Todos los usuarios (excepto admin)</li>
+                                <li>✅ Todos los proyectos</li>
+                                <li>✅ Todas las solicitudes PIE</li>
+                                <li>✅ Todos los proyectos colaborativos</li>
+                                <li>✅ Todos los comentarios</li>
+                            </ul>
+                            <p class="mb-0"><strong>Esta acción NO se puede deshacer.</strong></p>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmationText" class="form-label">
+                                Escribe <strong>"ELIMINAR TODO"</strong> para confirmar:
+                            </label>
+                            <input type="text" class="form-control" id="confirmationText" 
+                                   placeholder="ELIMINAR TODO">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </button>
+                        <button type="button" class="btn btn-danger" id="confirmNuclearButton" disabled>
+                            <i class="fas fa-bomb me-2"></i>Eliminar Todo
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Agregar modal al DOM si no existe
+    if (!document.getElementById('nuclearModal')) {
+        document.body.insertAdjacentHTML('beforeend', confirmationHTML);
+    }
+
+    // Mostrar modal
+    const nuclearModal = new bootstrap.Modal(document.getElementById('nuclearModal'));
+    nuclearModal.show();
+
+    // Configurar validación de texto
+    const confirmationInput = document.getElementById('confirmationText');
+    const confirmButton = document.getElementById('confirmNuclearButton');
+
+    confirmationInput.addEventListener('input', function() {
+        confirmButton.disabled = this.value !== 'ELIMINAR TODO';
+    });
+
+    // Configurar acción del botón confirmar
+    confirmButton.onclick = async function() {
+        await executeNuclearOption();
+        nuclearModal.hide();
+    };
+};
+
+// 🔥 EJECUTAR ELIMINACIÓN TOTAL
+async function executeNuclearOption() {
+    const submitBtn = document.getElementById('confirmNuclearButton');
+    const originalText = submitBtn.innerHTML;
+    
+    try {
+        // Mostrar loading
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Eliminando...';
+        submitBtn.disabled = true;
+
+        // Importar y ejecutar la función nuclear
+        const { nuclearDeleteAllData } = await import('../services/firestore.js');
+        const result = await nuclearDeleteAllData();
+
+        if (result.success) {
+            showRealtimeNotification('✅ Todos los datos han sido eliminados correctamente', 'success');
+            
+            // Recargar la lista de usuarios
+            setTimeout(() => {
+                loadExistingUsers();
+            }, 2000);
+        } else {
+            throw new Error(result.error);
+        }
+
+    } catch (error) {
+        console.error('❌ Error en eliminación total:', error);
+        showRealtimeNotification('❌ Error eliminando datos: ' + error.message, 'danger');
+    } finally {
+        // Restaurar botón
+        submitBtn.innerHTML = '<i class="fas fa-bomb me-2"></i>Eliminar Todo';
+        submitBtn.disabled = false;
+    }
+}
+
+// 🔥 FUNCIÓN NUCLEAR - ELIMINAR TODOS LOS DATOS
+export async function nuclearDeleteAllData() {
+    try {
+        console.log("💥 Iniciando eliminación nuclear de todos los datos...");
+        
+        // Obtener usuario actual
+        let currentUser;
+        if (typeof window.getCurrentUser === 'function') {
+            currentUser = window.getCurrentUser();
+        }
+        
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('Solo los administradores pueden ejecutar esta acción');
+        }
+
+        let totalDeleted = 0;
+
+        // 1. Eliminar todos los usuarios (excepto admin actual)
+        const usersResult = await deleteAllUsersExceptCurrent(currentUser.uid);
+        totalDeleted += usersResult.deleted;
+
+        // 2. Eliminar todos los proyectos
+        const projectsResult = await deleteAllProjects();
+        totalDeleted += projectsResult.deleted;
+
+        // 3. Eliminar todas las solicitudes PIE
+        const pieRequestsResult = await deleteAllPieRequests();
+        totalDeleted += pieRequestsResult.deleted;
+
+        // 4. Eliminar todos los proyectos colaborativos
+        const collaborativeResult = await deleteAllCollaborativeProjects();
+        totalDeleted += collaborativeResult.deleted;
+
+        // 5. Eliminar todos los registros de deleted_users
+        const deletedUsersResult = await deleteAllDeletedUsers();
+        totalDeleted += deletedUsersResult.deleted;
+
+        console.log(`✅ Eliminación nuclear completada. Total eliminado: ${totalDeleted} registros`);
+        
+        return {
+            success: true,
+            message: `Se eliminaron ${totalDeleted} registros correctamente`,
+            deletedCount: totalDeleted
+        };
+
+    } catch (error) {
+        console.error('❌ Error en eliminación nuclear:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+// 🔥 FUNCIONES AUXILIARES PARA ELIMINACIÓN NUCLEAR
+
+async function deleteAllUsersExceptCurrent(currentUserId) {
+    try {
+        const usersSnapshot = await db.collection('users').get();
+        const deletePromises = [];
+        
+        usersSnapshot.forEach(doc => {
+            if (doc.id !== currentUserId) {
+                deletePromises.push(doc.ref.delete());
+            }
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`✅ ${deletePromises.length} usuarios eliminados`);
+
+        return {
+            deleted: deletePromises.length
+        };
+
+    } catch (error) {
+        console.error('Error eliminando usuarios:', error);
+        return { deleted: 0 };
+    }
+}
+
+async function deleteAllProjects() {
+    try {
+        const projectsSnapshot = await db.collection('projects').get();
+        const deletePromises = [];
+        
+        projectsSnapshot.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`✅ ${deletePromises.length} proyectos eliminados`);
+
+        return {
+            deleted: deletePromises.length
+        };
+
+    } catch (error) {
+        console.error('Error eliminando proyectos:', error);
+        return { deleted: 0 };
+    }
+}
+
+async function deleteAllPieRequests() {
+    try {
+        const requestsSnapshot = await db.collection('pieRequests').get();
+        const deletePromises = [];
+        
+        requestsSnapshot.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`✅ ${deletePromises.length} solicitudes PIE eliminadas`);
+
+        return {
+            deleted: deletePromises.length
+        };
+
+    } catch (error) {
+        console.error('Error eliminando solicitudes PIE:', error);
+        return { deleted: 0 };
+    }
+}
+
+async function deleteAllCollaborativeProjects() {
+    try {
+        const projectsSnapshot = await db.collection('collaborativeProjects').get();
+        const deletePromises = [];
+        
+        projectsSnapshot.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`✅ ${deletePromises.length} proyectos colaborativos eliminados`);
+
+        return {
+            deleted: deletePromises.length
+        };
+
+    } catch (error) {
+        console.error('Error eliminando proyectos colaborativos:', error);
+        return { deleted: 0 };
+    }
+}
+
+async function deleteAllDeletedUsers() {
+    try {
+        const deletedSnapshot = await db.collection('deleted_users').get();
+        const deletePromises = [];
+        
+        deletedSnapshot.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`✅ ${deletePromises.length} registros de deleted_users eliminados`);
+
+        return {
+            deleted: deletePromises.length
+        };
+
+    } catch (error) {
+        console.error('Error eliminando deleted_users:', error);
+        return { deleted: 0 };
+    }
 }

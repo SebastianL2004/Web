@@ -10,6 +10,8 @@
     --warning-color: #fdcb6e;
     --danger-color: #e17055;
     --info-color: #0984e3;
+    --nuclear-color: #ff4757;          /* 🔥 NUEVO: Color nuclear */
+    --nuclear-glow: #ff6b81;           /* 🔥 NUEVO: Glow nuclear */
 }
 
 * {
@@ -214,13 +216,13 @@ body::before {
 
 .btn-warning {
     background: linear-gradient(135deg, var(--warning-color), #f6b93b);
-    color: #000 !important;
+    color: #000;
 }
 
 .btn-warning:hover {
     background: linear-gradient(135deg, #f6b93b, var(--warning-color));
     box-shadow: 0 4px 15px rgba(253, 203, 110, 0.3);
-    color: #000 !important;
+    color: #000;
 }
 
 .btn-danger {
@@ -232,10 +234,114 @@ body::before {
     box-shadow: 0 4px 15px rgba(225, 112, 85, 0.3);
 }
 
+/* 🔥 NUEVO: BOTÓN NUCLEAR */
+.btn-nuclear {
+    background: linear-gradient(135deg, var(--nuclear-color), var(--nuclear-glow));
+    color: white;
+    font-weight: 700;
+    border: 2px solid var(--nuclear-color);
+    animation: nuclear-pulse 2s infinite;
+}
+
+.btn-nuclear:hover {
+    background: linear-gradient(135deg, var(--nuclear-glow), var(--nuclear-color));
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.6);
+    transform: translateY(-2px) scale(1.05);
+    color: white;
+}
+
+@keyframes nuclear-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+}
+
 .btn-sm {
     padding: 4px 8px;
     font-size: 0.8rem;
     border-radius: 6px;
+}
+
+/* ===== VISTA ADMINISTRADOR - BOTÓN NUCLEAR ===== */
+.nuclear-section {
+    margin-top: 2rem;
+    border: 3px solid #dc3545;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #fff5f5, #ffe6e6);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+}
+
+.nuclear-section::before {
+    content: '⚠️';
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    font-size: 1.8rem;
+    animation: warning-blink 2s infinite;
+}
+
+@keyframes warning-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+.nuclear-section .card-header {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    font-weight: 700;
+    font-size: 1.1rem;
+    padding: 20px;
+    border-bottom: 2px solid #a71e2a;
+}
+
+.nuclear-warning-text {
+    color: #dc3545;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.nuclear-warning-list {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 1.5rem;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #dc3545;
+}
+
+.nuclear-warning-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #ffe0e0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 500;
+}
+
+.nuclear-warning-list li:last-child {
+    border-bottom: none;
+}
+
+.nuclear-warning-list li::before {
+    content: '💥';
+    font-size: 1.2rem;
+}
+
+/* Texto de advertencia adicional */
+.nuclear-disclaimer {
+    font-size: 0.9rem;
+    color: #856404;
+    background: #fff3cd;
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 4px solid #ffc107;
+    margin-top: 15px;
+    text-align: center;
 }
 
 /* ===== VISTA PROFESOR MEJORADA ===== */
@@ -313,17 +419,17 @@ body::before {
 
 /* Colores personalizados para headers - NUEVOS COLORES AZULES */
 .card-header-files {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
 }
 
 .card-header-pie {
-    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color)) !important;
+    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
     color: white;
 }
 
 .card-header-projects {
-    background: linear-gradient(135deg, var(--accent-color), var(--light-accent)) !important;
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
     color: white;
 }
 
@@ -390,18 +496,18 @@ body::before {
 
 /* Header colors para director - NUEVOS COLORES AZULES */
 .card-header-director {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
-    padding: 18px 25px !important;
+    padding: 18px 25px;
 }
 
 .card-header-director-pie {
-    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color)) !important;
+    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
     color: white;
 }
 
 .card-header-director-projects {
-    background: linear-gradient(135deg, var(--accent-color), var(--light-accent)) !important;
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
     color: white;
 }
 
@@ -448,18 +554,18 @@ body::before {
 
 /* Header colors para asistente - NUEVOS COLORES AZULES */
 .card-header-assistant {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
-    padding: 18px 25px !important;
+    padding: 18px 25px;
 }
 
 .card-header-assistant-pie {
-    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color)) !important;
+    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
     color: white;
 }
 
 .card-header-assistant-projects {
-    background: linear-gradient(135deg, var(--accent-color), var(--light-accent)) !important;
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
     color: white;
 }
 
@@ -623,10 +729,10 @@ body::before {
 .badge-completada { background-color: var(--accent-color); color: #fff; }
 
 /* Badges para niveles de urgencia */
-.bg-danger { background-color: var(--danger-color) !important; color: #fff !important; }
-.bg-warning { background-color: var(--warning-color) !important; color: #000 !important; }
-.bg-success { background-color: var(--success-color) !important; color: #fff !important; }
-.bg-secondary { background-color: #6c757d !important; color: #fff !important; }
+.bg-danger { background-color: var(--danger-color); color: #fff; }
+.bg-warning { background-color: var(--warning-color); color: #000; }
+.bg-success { background-color: var(--success-color); color: #fff; }
+.bg-secondary { background-color: #6c757d; color: #fff; }
 
 /* ===== DOCENTES CONECTADOS ===== */
 .online-teachers-container {
@@ -1082,6 +1188,15 @@ body::before {
     .director-comments-section {
         padding-top: 10px;
     }
+    
+    /* 🔥 RESPONSIVE PARA BOTÓN NUCLEAR */
+    .nuclear-section {
+        margin-top: 1rem;
+    }
+    
+    .nuclear-warning-list li {
+        font-size: 0.9rem;
+    }
 }
 
 @media (max-width: 576px) {
@@ -1105,6 +1220,16 @@ body::before {
     
     .card-header {
         padding: 15px;
+    }
+    
+    /* 🔥 RESPONSIVE MÓVIL PARA BOTÓN NUCLEAR */
+    .nuclear-section .card-body {
+        padding: 15px;
+    }
+    
+    .btn-nuclear {
+        font-size: 0.9rem;
+        padding: 10px 15px;
     }
 }
 
@@ -1240,7 +1365,7 @@ body::before {
 
 .realtime-update {
     animation: highlightUpdate 2s ease-in-out;
-    border-left: 4px solid var(--success-color) !important;
+    border-left: 4px solid var(--success-color);
 }
 
 @keyframes highlightUpdate {
@@ -1296,7 +1421,7 @@ body::before {
 /* Asegurar que los botones tengan color de texto apropiado */
 .btn-warning,
 .btn-warning:hover {
-    color: #000 !important;
+    color: #000;
 }
 
 .btn-primary,
@@ -1307,13 +1432,13 @@ body::before {
 .btn-success:hover,
 .btn-info:hover,
 .btn-danger:hover {
-    color: #fff !important;
+    color: #fff;
 }
 
 /* Corrección para modales Bootstrap */
 .modal-open {
     overflow: hidden;
-    padding-right: 0 !important;
+    padding-right: 0;
 }
 
 /* Asegurar que los elementos sean visibles */
@@ -1403,9 +1528,9 @@ body::before {
     *,
     *::before,
     *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms;
+        animation-iteration-count: 1;
+        transition-duration: 0.01ms;
     }
 }
 
@@ -1429,4 +1554,135 @@ body::before {
 
 .metric-card .card-body {
     padding: 1.5rem;
+}
+
+/* 🔥 NUEVO: ESTILOS PARA ADMIN VIEW */
+.admin-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    margin-top: 20px;
+    margin-bottom: 50px;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+.admin-main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* 🔥 NUEVO: ESTILOS PARA USUARIOS EN ADMIN */
+.user-item {
+    background: white;
+    border-radius: 10px;
+    border-left: 4px solid var(--primary-color);
+    transition: all 0.3s ease;
+    margin-bottom: 0;
+}
+
+.user-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-left-color: var(--secondary-color);
+}
+
+.user-info h6 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.user-actions .btn {
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+}
+
+/* 🔥 NUEVO: BADGES PARA ROLES */
+.badge-admin { background-color: var(--dark-blue); color: white; }
+.badge-director { background-color: var(--primary-color); color: white; }
+.badge-profesor { background-color: var(--accent-color); color: white; }
+.badge-asistente { background-color: var(--warning-color); color: #000; }
+
+/* ===== CORRECCIONES ADICIONALES ===== */
+
+/* Corregir selector duplicado para btn-nuclear */
+.btn-nuclear {
+    background: linear-gradient(135deg, var(--nuclear-color), var(--nuclear-glow));
+    color: white;
+    font-weight: 700;
+    border: 2px solid var(--nuclear-color);
+    animation: nuclear-pulse 2s infinite;
+    padding: 15px 20px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Corregir selectores con !important innecesarios */
+.card-header-files,
+.card-header-pie,
+.card-header-projects,
+.card-header-director,
+.card-header-director-pie,
+.card-header-director-projects,
+.card-header-assistant,
+.card-header-assistant-pie,
+.card-header-assistant-projects {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+}
+
+/* Especificar correctamente los gradientes para cada tipo */
+.card-header-pie {
+    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+}
+
+.card-header-projects,
+.card-header-director-projects,
+.card-header-assistant-projects {
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
+}
+
+.card-header-director-pie,
+.card-header-assistant-pie {
+    background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
+}
+
+/* Corregir problemas de especificidad en botones */
+.btn-warning,
+.btn-warning:hover {
+    color: #000;
+}
+
+/* Asegurar que los elementos ocultos estén correctamente definidos */
+.hidden {
+    display: none !important;
+}
+
+/* Corregir problemas de scroll en móviles */
+@media (max-width: 768px) {
+    .scrollable-card .card-body {
+        -webkit-overflow-scrolling: touch;
+        overflow-y: auto;
+    }
+}
+
+/* Corregir problemas de visualización en grid layouts */
+.director-dashboard,
+.assistant-dashboard {
+    display: grid;
+}
+
+/* Asegurar que las animaciones funcionen correctamente */
+@keyframes nuclear-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
 }
