@@ -4,18 +4,6 @@ import { currentUser, realtimeSubscriptions } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showRealtimeNotification } from '../services/notifications.js';
 
-// 1. IMPORTAR LAS FUNCIONES DE COMENTARIOS (Ajusta la ruta si el archivo tiene otro nombre)
-// Asumiré que el archivo anterior se llama 'directorComments.js'
-import { 
-    loadDirectorComments, 
-    addDirectorComment, 
-    deleteDirectorComment 
-} from '../views/director-comments.js'; // 🔥 CAMBIAR: directorComments.js → director-comments.js
-
-// 2. HACER LAS FUNCIONES GLOBALES PARA QUE EL HTML (onclick) LAS VEA
-window.addDirectorComment = addDirectorComment;
-window.deleteDirectorComment = deleteDirectorComment;
-
 export function loadOnlineTeachersForDirector() {
     const el = document.getElementById("onlineTeachersDirector");
     if (!el) {
@@ -29,7 +17,6 @@ export function loadOnlineTeachersForDirector() {
         realtimeSubscriptions.onlineTeachers();
     }
 
-    // Limpiar listeners de presencia anteriores
     if (realtimeSubscriptions.directorPresenceListeners) {
         realtimeSubscriptions.directorPresenceListeners.forEach(({ uid, listener }) => {
             rdb.ref("presence/" + uid).off("value", listener);
@@ -101,7 +88,9 @@ export function loadOnlineTeachersForDirector() {
 
                 const presenceListener = presenceRef.on("value", (snapshot) => {
                     const isOnline = snapshot.exists() && snapshot.val() === true;
-                    // console.log(`👤 Director: ${teacher.name} - ${isOnline ? 'CONECTADO' : 'DESCONECTADO'}`); // Comentado para limpiar consola
+
+                    console.log(`👤 Director: ${teacher.name} - ${isOnline ? 'CONECTADO' : 'DESCONECTADO'}`);
+
                     teacher.isOnline = isOnline;
                     updateUI();
                 }, (error) => {
@@ -127,7 +116,6 @@ export function loadOnlineTeachersForDirector() {
         });
 }
 
-// Exportar globalmente por si se llama desde HTML
 window.loadOnlineTeachersForDirector = loadOnlineTeachersForDirector;
 
 export function loadPieRequestsForDirector() {
@@ -153,8 +141,11 @@ export function loadPieRequestsForDirector() {
             }
 
             let hasNewItems = false;
+
             snap.docChanges().forEach(change => {
-                if (change.type === 'added') hasNewItems = true;
+                if (change.type === 'added') {
+                    hasNewItems = true;
+                }
             });
 
             snap.forEach(doc => {
@@ -175,13 +166,23 @@ export function loadPieRequestsForDirector() {
                         <div class="pie-request-meta">
                             <strong>Solicitado por:</strong> ${escapeHtml(request.requestedByName)} | 
                             <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)} | 
-                            <strong>Fecha:</strong> ${request.formattedDate || 'No especificada'}
+                            <strong>Fecha y Hora:</strong> ${request.formattedDate || 'No especificada'} ${request.formattedTime || ''}
                         </div>
                         <div class="pie-request-meta">
+                            <strong>Tipo de atención:</strong> ${escapeHtml(request.attentionType || 'No especificado')} | 
                             <strong>Urgencia:</strong> <span class="badge ${getUrgencyBadgeClass(request.urgencyLevel)}">${escapeHtml(request.urgencyLevel || 'Media')}</span>
                         </div>
                         <div class="pie-request-description">
                             <strong>Descripción:</strong> ${escapeHtml(request.caseDescription)}
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Apoderado:</strong> ${escapeHtml(request.parentName)} | 
+                            <strong>Teléfono:</strong> ${escapeHtml(request.parentPhone)} | 
+                            <strong>Email:</strong> ${escapeHtml(request.parentEmail)}
+                        </div>
+                        <div class="pie-request-meta">
+                            <strong>Días alternativos:</strong> ${request.preferredDays && request.preferredDays.length > 0 ? request.preferredDays.join(', ') : 'No especificados'} | 
+                            <strong>Fecha solicitud:</strong> ${requestDate}
                         </div>
                         <div class="pie-request-actions">
                             <small class="text-muted">Solo vista - Las ediciones las realiza el asistente PIE</small>
@@ -206,6 +207,7 @@ export function loadCollaborativeProjectsForDirector() {
     }
     
     if (realtimeSubscriptions.directorCollaborativeProjects) {
+        console.log("🔄 Limpiando suscripción anterior de proyectos colaborativos (director)");
         realtimeSubscriptions.directorCollaborativeProjects();
     }
 
@@ -214,6 +216,8 @@ export function loadCollaborativeProjectsForDirector() {
     realtimeSubscriptions.directorCollaborativeProjects = db.collection("collaborativeProjects")
         .orderBy("createdAt", "desc")
         .onSnapshot(snap => {
+            console.log("📊 Director: Datos de proyectos recibidos", snap.size);
+            
             el.innerHTML = "";
             
             if (snap.empty) {
@@ -234,12 +238,16 @@ export function loadCollaborativeProjectsForDirector() {
                 const project = { id: doc.id, ...doc.data() };
                 const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
                 
+                // 🔥 DETECTAR PROYECTO COMPLETADO - MÚLTIPLES FORMAS
                 const isCompleted = project.status === 'completada' || 
-                                    project.status === 'completado' || 
-                                    project.status === 'completed' ||
-                                    project.isCompleted === true;
+                                  project.status === 'completado' || 
+                                  project.status === 'completed' ||
+                                  project.isCompleted === true;
                 
-                if (isCompleted) completedProjectsCount++;
+                if (isCompleted) {
+                    completedProjectsCount++;
+                    console.log("✅ Director: Proyecto completado detectado:", project.name, "Estado:", project.status);
+                }
                 
                 const statusBadge = isCompleted ? 
                     '<span class="badge bg-success ms-2"><i class="fas fa-check-circle me-1"></i>COMPLETADO</span>' : 
@@ -255,42 +263,76 @@ export function loadCollaborativeProjectsForDirector() {
                         </div>
                         <div class="collaborative-project-meta">
                             <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
-                            <strong>Docente:</strong> ${escapeHtml(project.teacher)}
+                            <strong>Docente:</strong> ${escapeHtml(project.teacher)} | 
+                            <strong>Asignatura:</strong> ${escapeHtml(project.subject)}
+                        </div>
+                        <div class="collaborative-project-meta">
+                            <strong>Inicio:</strong> ${startDate} | 
+                            <strong>Duración:</strong> ${project.duration} semanas | 
+                            <strong>Estado:</strong> ${project.status || 'pendiente'}
                         </div>
                         <div class="collaborative-project-objective">
                             <strong>Objetivo:</strong> ${escapeHtml(project.objective)}
                         </div>
+                        ${project.strategies && project.strategies.length > 0 ? `
+                            <div class="collaborative-project-strategies">
+                                <strong>Estrategias:</strong>
+                                ${project.strategies.map(strategy => `<span class="strategy-tag">${escapeHtml(strategy)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        ${isCompleted ? `
+                            <div class="mt-3 p-3 bg-success text-white rounded">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-check-circle fa-2x me-3"></i>
+                                    <div>
+                                        <strong>PROYECTO COMPLETADO</strong><br>
+                                        <small>Marcado como finalizado por el asistente PIE</small>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                         
                         <div class="director-comments-section mt-3">
                             <h6><i class="fas fa-comments me-2"></i>Comentarios del Director</h6>
                             <div class="new-director-comment mb-3">
-                                <textarea class="form-control" id="newDirectorComment-${project.id}" 
+                                <textarea class="form-control" id="directorComment-${project.id}" 
                                           placeholder="Agregar un comentario para el docente..." 
                                           rows="2"></textarea>
                                 <button class="btn btn-sm btn-primary mt-2" 
-                                        onclick="window.addDirectorComment('${project.id}')">
+                                        onclick="addDirectorComment('${project.id}')">
                                     <i class="fas fa-paper-plane me-1"></i>Enviar Comentario
                                 </button>
                             </div>
-                            <div id="directorComments-${project.id}">
-                                <div class="text-center"><div class="loading"></div></div>
+                            <div id="directorCommentList-${project.id}">
+                                <!-- Los comentarios se cargarán aquí -->
                             </div>
                         </div>
                     </div>
                 `;
                 
-                // Cargar los comentarios usando la función importada
                 loadDirectorComments(project.id);
             });
             
+            // 🔥 ACTUALIZAR CONTADORES EN TIEMPO REAL
             updateCompletedProjectsCounter(completedProjectsCount, totalProjectsCount);
-            updateDashboardMetrics(); 
+            updateDashboardMetrics(); // Actualizar dashboard completo
             
         }, error => {
-            console.error("❌ Error cargando proyectos colaborativos:", error);
+            console.error("❌ Error cargando proyectos colaborativos (director):", error);
+            el.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Error al cargar proyectos</p>
+                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadCollaborativeProjectsForDirector()">
+                        Reintentar
+                    </button>
+                </div>
+            `;
         });
 }
 
+// 🔥 FUNCIÓN MEJORADA: Actualizar contador de proyectos completados
 function updateCompletedProjectsCounter(completed, total) {
     const counterElement = document.getElementById('completedProjectsCounter');
     if (counterElement) {
@@ -301,11 +343,20 @@ function updateCompletedProjectsCounter(completed, total) {
             </small>
         `;
     }
+    
+    // Actualizar dashboard si está visible
+    if (document.getElementById('metricsDashboard')) {
+        setTimeout(() => {
+            loadDirectorDashboard();
+        }, 500);
+    }
 }
 
+// 🔥 NUEVA FUNCIÓN: Actualizar métricas del dashboard rápidamente
 async function updateDashboardMetrics() {
     const dashboardEl = document.getElementById('metricsDashboard');
     if (!dashboardEl) return;
+
     try {
         const metrics = await calculateDashboardMetrics();
         renderDashboardMetrics(metrics);
@@ -315,43 +366,109 @@ async function updateDashboardMetrics() {
 }
 
 export function loadAllProjectsForDirector() {
-    // Escucha proyectos generales
-    db.collection("projects").orderBy("createdAt", "desc").onSnapshot(snap => {
-        snap.docChanges().forEach(change => {
-            if (change.type === 'added') {
-                const project = change.doc.data();
-                showRealtimeNotification(`Profesor subió: "${escapeHtml(project.title)}"`, 'success');
-            }
+    db.collection("projects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const project = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `El profesor ${escapeHtml(project.uploadedByName || 'Un profesor')} subió: "${escapeHtml(project.title)}"`,
+                        'success',
+                        'subió'
+                    );
+                }
+            });
         });
-    });
 
-    // Escucha proyectos colaborativos
-    db.collection("collaborativeProjects").orderBy("createdAt", "desc").onSnapshot(snap => {
-        snap.docChanges().forEach(change => {
-            if (change.type === 'added') {
-                const project = change.doc.data();
-                showRealtimeNotification(`Nuevo proyecto colaborativo: "${escapeHtml(project.name)}"`, 'warning');
-            }
+    db.collection("collaborativeProjects")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const project = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `Nuevo proyecto colaborativo: "${escapeHtml(project.name)}" por ${escapeHtml(project.createdByName)}`,
+                        'warning',
+                        'creó'
+                    );
+                }
+                
+                // 🔥 DETECTAR CUANDO UN PROYECTO SE MARCA COMO COMPLETADO
+                if (change.type === 'modified') {
+                    const project = { id: change.doc.id, ...change.doc.data() };
+                    const wasCompleted = project.status === 'completada' || 
+                                       project.status === 'completado' || 
+                                       project.status === 'completed';
+                    
+                    if (wasCompleted) {
+                        console.log("🎉 Director: Proyecto marcado como completado:", project.name);
+                        showRealtimeNotification(
+                            `Proyecto completado: "${escapeHtml(project.name)}"`,
+                            'success',
+                            'completó'
+                        );
+                        
+                        // Forzar actualización del dashboard
+                        setTimeout(() => {
+                            loadDirectorDashboard();
+                            loadCollaborativeProjectsForDirector();
+                        }, 1000);
+                    }
+                }
+            });
         });
-    });
+
+    db.collection("pieRequests")
+        .orderBy("createdAt", "desc")
+        .onSnapshot(snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const request = { id: change.doc.id, ...change.doc.data() };
+                    showRealtimeNotification(
+                        `Nueva solicitud PIE para ${escapeHtml(request.studentName)} de ${escapeHtml(request.requestedByName)}`,
+                        'info',
+                        'solicitó'
+                    );
+                }
+            });
+        });
 }
 
 // ------------------ DASHBOARD FUNCTIONS ------------------
 export async function loadDirectorDashboard() {
+    console.log("📊 Cargando dashboard del director...");
+    
     const dashboardEl = document.getElementById('metricsDashboard');
-    if (!dashboardEl) return;
+    if (!dashboardEl) {
+        console.error("❌ No se encontró el elemento metricsDashboard");
+        return;
+    }
     
     try {
+        console.log("🔄 Iniciando cálculo de métricas...");
         const metrics = await calculateDashboardMetrics();
+        console.log("✅ Métricas calculadas:", metrics);
         renderDashboardMetrics(metrics);
+        
     } catch (error) {
         console.error("❌ Error cargando dashboard:", error);
-        dashboardEl.innerHTML = `<p class="text-danger">Error cargando métricas</p>`;
+        dashboardEl.innerHTML = `
+            <div class="col-12 text-center text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <p>Error al cargar las métricas</p>
+                <small>${error.message}</small>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadDirectorDashboard()">
+                    Reintentar
+                </button>
+            </div>
+        `;
     }
 }
 
 async function calculateDashboardMetrics() {
-    // Optimización: Promise.all para cargar en paralelo
+    console.log("📈 Calculando métricas del dashboard...");
+
     const [teachers, projects, pieRequests, collaborativeProjects] = await Promise.all([
         db.collection("users").where("role", "==", "profesor").get(),
         db.collection("projects").get(),
@@ -359,74 +476,234 @@ async function calculateDashboardMetrics() {
         db.collection("collaborativeProjects").get()
     ]);
 
-    // Contar docentes online
-    let onlineTeachers = 0;
-    const presencePromises = teachers.docs.map(doc => 
-        rdb.ref(`presence/${doc.id}`).once('value').then(snap => {
-            if (snap.exists() && snap.val() === true) onlineTeachers++;
-        })
-    );
-    await Promise.all(presencePromises);
-
-    const completedCollaborative = collaborativeProjects.docs.filter(doc => {
-        const d = doc.data();
-        return d.status === 'completada' || d.status === 'completado' || d.status === 'completed' || d.isCompleted === true;
-    }).length;
-
-    const completedPie = pieRequests.docs.filter(d => d.data().status === 'completada').length;
+    console.log("✅ Datos obtenidos:", {
+        teachers: teachers.size,
+        projects: projects.size,
+        pieRequests: pieRequests.size,
+        collaborativeProjects: collaborativeProjects.size
+    });
 
     const totalTeachers = teachers.size;
-    const totalColl = collaborativeProjects.size;
-    const totalPie = pieRequests.size;
+    const totalProjects = projects.size;
+    const totalPieRequests = pieRequests.size;
+    const totalCollaborativeProjects = collaborativeProjects.size;
+
+    // Docentes conectados
+    let onlineTeachers = 0;
+    const presencePromises = [];
+
+    teachers.forEach(doc => {
+        const presencePromise = rdb.ref(`presence/${doc.id}`).once('value')
+            .then(snapshot => {
+                if (snapshot.exists() && snapshot.val() === true) {
+                    onlineTeachers++;
+                }
+            });
+        presencePromises.push(presencePromise);
+    });
+
+    await Promise.all(presencePromises);
+
+    // Solicitudes PIE completadas
+    const completedPieRequests = pieRequests.docs.filter(doc => {
+        const data = doc.data();
+        return data.status === 'completada' || data.status === 'completed';
+    }).length;
+
+    // 🔥 PROYECTOS COLABORATIVOS COMPLETADOS - DETECCIÓN MEJORADA
+    const completedCollaborativeProjects = collaborativeProjects.docs.filter(doc => {
+        const data = doc.data();
+        return data.status === 'completada' || 
+               data.status === 'completado' || 
+               data.status === 'completed' ||
+               data.isCompleted === true;
+    }).length;
+
+    console.log("🔥 Proyectos colaborativos completados:", completedCollaborativeProjects, "de", totalCollaborativeProjects);
+
+    const estimatedHours = totalProjects * 2 + totalCollaborativeProjects * 5;
 
     return {
         totalTeachers,
         onlineTeachers,
-        onlinePercentage: totalTeachers ? Math.round((onlineTeachers/totalTeachers)*100) : 0,
-        totalCollaborativeProjects: totalColl,
-        completedCollaborativeProjects: completedCollaborative,
-        collaborativeCompletionRate: totalColl ? Math.round((completedCollaborative/totalColl)*100) : 0,
-        totalPieRequests: totalPie,
-        completedPieRequests: completedPie,
-        pieCompletionRate: totalPie ? Math.round((completedPie/totalPie)*100) : 0,
-        estimatedHours: (projects.size * 2) + (totalColl * 5),
-        totalProjects: projects.size
+        totalProjects,
+        totalPieRequests,
+        completedPieRequests,
+        totalCollaborativeProjects,
+        completedCollaborativeProjects,
+        estimatedHours,
+        onlinePercentage: totalTeachers > 0 ? Math.round((onlineTeachers / totalTeachers) * 100) : 0,
+        pieCompletionRate: totalPieRequests > 0 ? Math.round((completedPieRequests / totalPieRequests) * 100) : 0,
+        collaborativeCompletionRate: totalCollaborativeProjects > 0 ? Math.round((completedCollaborativeProjects / totalCollaborativeProjects) * 100) : 0
     };
 }
 
 function renderDashboardMetrics(metrics) {
     const dashboardEl = document.getElementById('metricsDashboard');
-    // ... (Tu código HTML del dashboard estaba bien, lo mantengo simplificado aquí por espacio, pero usa el tuyo original)
+
     dashboardEl.innerHTML = `
         <div class="col-md-3 mb-4">
             <div class="card metric-card bg-primary text-white">
                 <div class="card-body text-center">
+                    <i class="fas fa-users fa-2x mb-2"></i>
                     <h3>${metrics.onlineTeachers}/${metrics.totalTeachers}</h3>
-                    <p>Docentes Conectados</p>
+                    <p class="mb-0">Docentes Conectados</p>
+                    <small>${metrics.onlinePercentage}% en línea</small>
                 </div>
             </div>
         </div>
+        
         <div class="col-md-3 mb-4">
             <div class="card metric-card bg-success text-white">
                 <div class="card-body text-center">
+                    <i class="fas fa-project-diagram fa-2x mb-2"></i>
                     <h3>${metrics.completedCollaborativeProjects}/${metrics.totalCollaborativeProjects}</h3>
-                    <p>Proyectos Colaborativos</p>
+                    <p class="mb-0">Proyectos Colaborativos</p>
+                    <small>${metrics.collaborativeCompletionRate}% completados</small>
                 </div>
             </div>
         </div>
-        `;
+        
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-clock fa-2x mb-2"></i>
+                    <h3>${metrics.estimatedHours}+</h3>
+                    <p class="mb-0">Horas Trabajadas</p>
+                    <small>Estimado total</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card metric-card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-tasks fa-2x mb-2"></i>
+                    <h3>${metrics.completedPieRequests}/${metrics.totalPieRequests}</h3>
+                    <p class="mb-0">Solicitudes PIE</p>
+                    <small>${metrics.pieCompletionRate}% completadas</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">Resumen General</h6>
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="border-end">
+                                <h4 class="text-primary">${metrics.totalProjects}</h4>
+                                <small class="text-muted">Proyectos Totales</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border-end">
+                                <h4 class="text-success">${metrics.totalCollaborativeProjects}</h4>
+                                <small class="text-muted">Proyectos Colaborativos</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div>
+                                <h4 class="text-info">${metrics.totalPieRequests}</h4>
+                                <small class="text-muted">Solicitudes PIE Totales</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
-// Helpers
+window.generateReport = async function () {
+    console.log("📄 Generando reporte...");
+
+    try {
+        const metrics = await calculateDashboardMetrics();
+        await generateReportImage(metrics);
+    } catch (error) {
+        console.error("❌ Error generando reporte:", error);
+        alert("Error al generar el reporte. Intenta nuevamente.");
+    }
+};
+
+async function generateReportImage(metrics) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(0, 0, canvas.width, 80);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('Reporte de Métricas - Director', 50, 40);
+
+    ctx.font = '14px Arial';
+    ctx.fillText(`Generado: ${new Date().toLocaleDateString()}`, 50, 60);
+
+    let yPosition = 150;
+    const metricsData = [
+        { label: 'Docentes Conectados', value: `${metrics.onlineTeachers}/${metrics.totalTeachers}`, color: '#3498db' },
+        { label: 'Proyectos Colaborativos', value: `${metrics.completedCollaborativeProjects}/${metrics.totalCollaborativeProjects}`, color: '#27ae60' },
+        { label: 'Horas Trabajadas', value: `${metrics.estimatedHours}+`, color: '#2980b9' },
+        { label: 'Solicitudes PIE Completadas', value: `${metrics.completedPieRequests}/${metrics.totalPieRequests}`, color: '#f39c12' },
+        { label: 'Tasa de Completitud PIE', value: `${metrics.pieCompletionRate}%`, color: '#e74c3c' },
+        { label: 'Tasa de Completitud Proyectos', value: `${metrics.collaborativeCompletionRate}%`, color: '#9b59b6' }
+    ];
+
+    metricsData.forEach((metric, index) => {
+        const xPosition = (index % 2 === 0) ? 100 : 450;
+        if (index % 2 === 0 && index !== 0) yPosition += 100;
+
+        ctx.fillStyle = metric.color;
+        ctx.beginPath();
+        ctx.arc(xPosition, yPosition, 30, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(metric.value, xPosition, yPosition + 5);
+
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(metric.label, xPosition, yPosition + 50);
+    });
+
+    ctx.fillStyle = '#7f8c8d';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Colegio Arica - Plataforma Colaborativa', canvas.width / 2, canvas.height - 20);
+
+    canvas.toBlob(function (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte-director-${new Date().toISOString().split('T')[0]}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showRealtimeNotification('Reporte descargado exitosamente', 'success');
+    });
+}
+
 function getUrgencyBadgeClass(urgencyLevel) {
-    const classes = { 'Baja': 'bg-success', 'Media': 'bg-warning', 'Alta': 'bg-danger' };
+    const classes = {
+        'Baja': 'bg-success',
+        'Media': 'bg-warning', 
+        'Alta': 'bg-danger'
+    };
     return classes[urgencyLevel] || 'bg-secondary';
 }
 
-// ------------------ EXPORTAR A WINDOW ------------------
-// Esto permite que el HTML llame a estas funciones (ej: onclick="loadDirectorDashboard()")
 window.loadDirectorDashboard = loadDirectorDashboard;
-window.generateReport = async function() {
-    // ... tu lógica de reporte ...
-    alert("Generando reporte... (Asegúrate de importar generateReportImage si está en otro lado)");
-};
+window.generateReport = generateReport;
