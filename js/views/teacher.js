@@ -139,115 +139,89 @@ export function loadMyPieRequests() {
   }, 10000);
 
   try {
-    const query = db.collection("pieRequests")
+    // 🔥 CONSULTA OPTIMIZADA PARA EVITAR ERRORES DE ÍNDICE
+    const baseQuery = db.collection("pieRequests")
       .where("requestedBy", "==", currentUser.uid);
     
-    const queryWithOrder = query.orderBy("createdAt", "desc");
+    // Intentar con ordenamiento primero
+    const queryWithOrder = baseQuery.orderBy("createdAt", "desc");
     
     realtimeSubscriptions.pieRequests = queryWithOrder.onSnapshot(snap => {
       clearTimeout(loadTimeout);
-      
-      el.innerHTML = "";
-      
-      if (snap.empty) {
-        el.innerHTML = `
-          <div class="empty-state">
-            <i class="fas fa-calendar-times"></i>
-            <p>No has realizado solicitudes PIE</p>
-          </div>
-        `;
-        return;
-      }
-      
-      const requests = [];
-      snap.forEach(doc => {
-        requests.push({ id: doc.id, ...doc.data() });
-      });
-      
-      requests.sort((a, b) => {
-        const timeA = a.createdAt?.seconds || 0;
-        const timeB = b.createdAt?.seconds || 0;
-        return timeB - timeA;
-      });
-      
-      requests.forEach(request => {
-        const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
-        
-        el.innerHTML += `
-          <div class="pie-request-item-clickable" onclick="showPieRequestDetail('${request.id}')">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-              <div>
-                <strong>${escapeHtml(request.studentName)}</strong>
-                <small class="d-block text-muted">${escapeHtml(request.studentGrade)}</small>
-              </div>
-              <span class="pie-request-status status-${request.status}">${request.status}</span>
-            </div>
-            <div class="small">
-              <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)}<br>
-              <strong>Fecha:</strong> ${request.formattedDate || 'No especificada'}
-            </div>
-          </div>
-        `;
-      });
+      renderPieRequests(snap, el);
     }, error => {
       clearTimeout(loadTimeout);
-      console.error("❌ Error cargando solicitudes PIE:", error);
       
       if (error.code === 'failed-precondition') {
-        console.log("🔄 Usando query alternativa para solicitudes PIE...");
-        realtimeSubscriptions.pieRequests = query.onSnapshot(snap => {
-          el.innerHTML = "";
-          
-          if (snap.empty) {
-            el.innerHTML = `
-              <div class="empty-state">
-                <i class="fas fa-calendar-times"></i>
-                <p>No has realizado solicitudes PIE</p>
-              </div>
-            `;
-            return;
-          }
-          
-          const requests = [];
-          snap.forEach(doc => {
-            requests.push({ id: doc.id, ...doc.data() });
-          });
-          
-          requests.sort((a, b) => {
-            const timeA = a.createdAt?.seconds || 0;
-            const timeB = b.createdAt?.seconds || 0;
-            return timeB - timeA;
-          });
-          
-          requests.forEach(request => {
-            const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
-            
-            el.innerHTML += `
-              <div class="pie-request-item-clickable" onclick="showPieRequestDetail('${request.id}')">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                  <div>
-                    <strong>${escapeHtml(request.studentName)}</strong>
-                    <small class="d-block text-muted">${escapeHtml(request.studentGrade)}</small>
-                  </div>
-                  <span class="pie-request-status status-${request.status}">${request.status}</span>
-                </div>
-                <div class="small">
-                  <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)}<br>
-                  <strong>Fecha:</strong> ${request.formattedDate || 'No especificada'}
-                </div>
-              </div>
-            `;
-          });
+        console.log("🔄 Usando query alternativa para solicitudes PIE (sin ordenamiento)...");
+        // 🔥 FALLBACK: Consulta sin ordenamiento
+        realtimeSubscriptions.pieRequests = baseQuery.onSnapshot(snap => {
+          renderPieRequests(snap, el, true); // true = ordenar manualmente
+        }, fallbackError => {
+          console.error("❌ Error en query alternativa:", fallbackError);
+          handleFirestoreError(fallbackError, el, "solicitudes PIE", loadMyPieRequests);
         });
       } else {
+        console.error("❌ Error cargando solicitudes PIE:", error);
         handleFirestoreError(error, el, "solicitudes PIE", loadMyPieRequests);
       }
     });
+    
   } catch (error) {
     clearTimeout(loadTimeout);
     console.error("❌ Error en loadMyPieRequests:", error);
     handleFirestoreError(error, el, "solicitudes PIE", loadMyPieRequests);
   }
+}
+
+// 🔥 FUNCIÓN AUXILIAR PARA RENDERIZAR SOLICITUDES PIE
+function renderPieRequests(snap, element, sortManually = false) {
+  element.innerHTML = "";
+  
+  if (snap.empty) {
+    element.innerHTML = `
+      <div class="empty-state">
+        <i class="fas fa-calendar-times"></i>
+        <p>No has realizado solicitudes PIE</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const requests = [];
+  snap.forEach(doc => {
+    requests.push({ id: doc.id, ...doc.data() });
+  });
+  
+  // 🔥 ORDENAR MANUALMENTE SI ES NECESARIO
+  if (sortManually) {
+    requests.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeB - timeA; // Orden descendente
+    });
+  }
+  
+  requests.forEach(request => {
+    const requestDate = request.createdAt ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+    
+    element.innerHTML += `
+      <div class="pie-request-item-clickable" onclick="showPieRequestDetail('${request.id}')">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <strong>${escapeHtml(request.studentName)}</strong>
+            <small class="d-block text-muted">${escapeHtml(request.studentGrade)}</small>
+          </div>
+          <span class="pie-request-status status-${request.status}">${request.status}</span>
+        </div>
+        <div class="small">
+          <strong>Asignatura:</strong> ${escapeHtml(request.subjectRequest)}<br>
+          <strong>Fecha:</strong> ${request.formattedDate || 'No especificada'}<br>
+          <strong>Creado:</strong> ${requestDate}
+        </div>
+      </div>
+    `;
+  });
 }
 
 export function loadMyCollaborativeProjects() {
@@ -280,131 +254,34 @@ export function loadMyCollaborativeProjects() {
   }, 10000);
 
   try {
-    const query = db.collection("collaborativeProjects")
+    // 🔥 CONSULTA OPTIMIZADA PARA EVITAR ERRORES DE ÍNDICE
+    const baseQuery = db.collection("collaborativeProjects")
       .where("createdBy", "==", currentUser.uid);
     
-    const queryWithOrder = query.orderBy("createdAt", "desc");
+    // Intentar con ordenamiento primero
+    const queryWithOrder = baseQuery.orderBy("createdAt", "desc");
     
     realtimeSubscriptions.collaborativeProjects = queryWithOrder.onSnapshot(snap => {
       clearTimeout(loadTimeout);
-      
-      el.innerHTML = "";
-      
-      if (snap.empty) {
-        el.innerHTML = `
-          <div class="empty-state">
-            <i class="fas fa-users"></i>
-            <p>No has creado proyectos colaborativos aún</p>
-          </div>
-        `;
-        return;
-      }
-      
-      let hasNewItems = false;
-      const projects = [];
-      
-      snap.forEach(doc => {
-        projects.push({ id: doc.id, ...doc.data() });
-        if (doc.metadata.hasPendingWrites) {
-          hasNewItems = true;
-        }
-      });
-      
-      projects.forEach(project => {
-        const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
-        const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
-        
-        el.innerHTML += `
-          <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''}" 
-               onclick="showCollaborativeProjectDetail('${project.id}')">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-              <div>
-                <strong>${escapeHtml(project.name)}</strong>
-                <small class="d-block text-muted">${escapeHtml(project.teacher)} - ${escapeHtml(project.subject)}</small>
-              </div>
-              <span class="badge bg-warning">Proyecto</span>
-            </div>
-            <div class="small">
-              <strong>Inicio:</strong> ${startDate}<br>
-              <strong>Duración:</strong> ${project.duration} semanas<br>
-              <strong>Docente:</strong> ${escapeHtml(project.teacher)}<br>
-              <strong>Objetivo:</strong> ${escapeHtml(project.objective.substring(0, 80))}${project.objective.length > 80 ? '...' : ''}
-            </div>
-            ${directorCommentsCount > 0 ? `
-              <div class="mt-2">
-                <small class="text-info"><i class="fas fa-comment"></i> ${directorCommentsCount} comentario(s) del director</small>
-              </div>
-            ` : ''}
-          </div>
-        `;
-      });
-      
-      if (hasNewItems) {
-        showRealtimeNotification('Tu proyecto colaborativo se creó correctamente', 'success', 'creaste');
-      }
+      renderCollaborativeProjects(snap, el);
     }, error => {
       clearTimeout(loadTimeout);
-      console.error("❌ Error en tiempo real de proyectos colaborativos:", error);
       
       if (error.code === 'failed-precondition') {
-        console.log("🔄 Usando query alternativa para proyectos colaborativos...");
-        realtimeSubscriptions.collaborativeProjects = query.onSnapshot(snap => {
-          el.innerHTML = "";
-          
-          if (snap.empty) {
-            el.innerHTML = `
-              <div class="empty-state">
-                <i class="fas fa-users"></i>
-                <p>No has creado proyectos colaborativos aún</p>
-              </div>
-            `;
-            return;
-          }
-          
-          const projects = [];
-          snap.forEach(doc => {
-            projects.push({ id: doc.id, ...doc.data() });
-          });
-          
-          projects.sort((a, b) => {
-            const timeA = a.createdAt?.seconds || 0;
-            const timeB = b.createdAt?.seconds || 0;
-            return timeB - timeA;
-          });
-          
-          projects.forEach(project => {
-            const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
-            const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
-            
-            el.innerHTML += `
-              <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''}" 
-                   onclick="showCollaborativeProjectDetail('${project.id}')">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                  <div>
-                    <strong>${escapeHtml(project.name)}</strong>
-                    <small class="d-block text-muted">${escapeHtml(project.teacher)} - ${escapeHtml(project.subject)}</small>
-                  </div>
-                  <span class="badge bg-warning">Proyecto</span>
-                </div>
-                <div class="small">
-                  <strong>Inicio:</strong> ${startDate}<br>
-                  <strong>Duración:</strong> ${project.duration} semanas<br>
-                  <strong>Docente:</strong> ${escapeHtml(project.teacher)}<br>
-                  <strong>Objetivo:</strong> ${escapeHtml(project.objective.substring(0, 80))}${project.objective.length > 80 ? '...' : ''}
-                </div>
-                ${directorCommentsCount > 0 ? `
-                  <div class="mt-2">
-                    <small class="text-info"><i class="fas fa-comment"></i> ${directorCommentsCount} comentario(s) del director</small>
-                  </div>
-                ` : ''}
-              </div>
-            `;
-          });
+        console.log("🔄 Usando query alternativa para proyectos colaborativos (sin ordenamiento)...");
+        // 🔥 FALLBACK: Consulta sin ordenamiento
+        realtimeSubscriptions.collaborativeProjects = baseQuery.onSnapshot(snap => {
+          renderCollaborativeProjects(snap, el, true); // true = ordenar manualmente
+        }, fallbackError => {
+          console.error("❌ Error en query alternativa:", fallbackError);
+          handleFirestoreError(fallbackError, el, "proyectos colaborativos", loadMyCollaborativeProjects);
         });
       } else {
+        console.error("❌ Error en tiempo real de proyectos colaborativos:", error);
         handleFirestoreError(error, el, "proyectos colaborativos", loadMyCollaborativeProjects);
       }
     });
+    
   } catch (error) {
     clearTimeout(loadTimeout);
     console.error("❌ Error en loadMyCollaborativeProjects:", error);
@@ -412,39 +289,121 @@ export function loadMyCollaborativeProjects() {
   }
 }
 
-// Función auxiliar para manejar errores de Firestore
+// 🔥 FUNCIÓN AUXILIAR PARA RENDERIZAR PROYECTOS COLABORATIVOS
+function renderCollaborativeProjects(snap, element, sortManually = false) {
+  element.innerHTML = "";
+  
+  if (snap.empty) {
+    element.innerHTML = `
+      <div class="empty-state">
+        <i class="fas fa-users"></i>
+        <p>No has creado proyectos colaborativos aún</p>
+      </div>
+    `;
+    return;
+  }
+  
+  let hasNewItems = false;
+  const projects = [];
+  
+  snap.forEach(doc => {
+    projects.push({ id: doc.id, ...doc.data() });
+    if (doc.metadata.hasPendingWrites) {
+      hasNewItems = true;
+    }
+  });
+  
+  // 🔥 ORDENAR MANUALMENTE SI ES NECESARIO
+  if (sortManually) {
+    projects.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeB - timeA; // Orden descendente
+    });
+  }
+  
+  projects.forEach(project => {
+    const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : "Fecha no disponible";
+    const createdDate = project.createdAt ? new Date(project.createdAt.seconds * 1000).toLocaleDateString() : "Fecha no disponible";
+    const directorCommentsCount = project.directorComments ? project.directorComments.length : 0;
+    
+    element.innerHTML += `
+      <div class="collaborative-project-item-clickable ${directorCommentsCount > 0 ? 'has-director-comments' : ''}" 
+           onclick="showCollaborativeProjectDetail('${project.id}')">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <strong>${escapeHtml(project.name)}</strong>
+            <small class="d-block text-muted">${escapeHtml(project.teacher)} - ${escapeHtml(project.subject)}</small>
+          </div>
+          <span class="badge bg-warning">Proyecto</span>
+        </div>
+        <div class="small">
+          <strong>Inicio:</strong> ${startDate}<br>
+          <strong>Duración:</strong> ${project.duration} semanas<br>
+          <strong>Docente:</strong> ${escapeHtml(project.teacher)}<br>
+          <strong>Creado:</strong> ${createdDate}<br>
+          <strong>Objetivo:</strong> ${escapeHtml(project.objective.substring(0, 80))}${project.objective.length > 80 ? '...' : ''}
+        </div>
+        ${directorCommentsCount > 0 ? `
+          <div class="mt-2">
+            <small class="text-info"><i class="fas fa-comment"></i> ${directorCommentsCount} comentario(s) del director</small>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  
+  if (hasNewItems) {
+    showRealtimeNotification('Tu proyecto colaborativo se creó correctamente', 'success');
+  }
+}
+
+// 🔥 MEJORADA: Función auxiliar para manejar errores de Firestore
 function handleFirestoreError(error, element, resourceName, retryFunction) {
   let errorMessage = `Error al cargar ${resourceName}`;
   let showRetryButton = true;
+  let isIndexError = false;
   
   if (error.code === 'failed-precondition') {
     errorMessage = `Configuración necesaria para ${resourceName}. El sistema se configurará automáticamente.`;
-    showNotification('⚠️ Configurando sistema... por favor espera', 'warning');
+    showRealtimeNotification('⚠️ Configurando sistema... por favor espera', 'warning');
+    isIndexError = true;
     
+    // Reintentar automáticamente después de un tiempo
     setTimeout(() => {
       if (retryFunction && typeof retryFunction === 'function') {
+        console.log(`🔄 Reintentando cargar ${resourceName} después de error de índice...`);
         retryFunction();
       }
-    }, 10000);
+    }, 8000);
   } else if (error.code === 'unavailable') {
     errorMessage = `Error de conexión al cargar ${resourceName}`;
   } else if (error.code === 'permission-denied') {
     errorMessage = `No tienes permisos para acceder a ${resourceName}`;
     showRetryButton = false;
+  } else if (error.code === 'not-found') {
+    errorMessage = `${resourceName} no encontrado`;
   }
   
   element.innerHTML = `
     <div class="empty-state">
       <i class="fas fa-exclamation-triangle"></i>
       <p>${errorMessage}</p>
-      <small class="text-muted">${error.message}</small>
+      <small class="text-muted">${error.message || 'Error desconocido'}</small>
+      ${isIndexError ? `
+        <div class="mt-2">
+          <small class="text-info">⏳ Los índices se crean automáticamente, esto puede tomar unos minutos...</small>
+        </div>
+      ` : ''}
       ${showRetryButton ? `
-        <button class="btn btn-sm btn-outline-primary mt-2" onclick="window.${retryFunction.name}()">
+        <button class="btn btn-sm btn-outline-primary mt-2" onclick="(${retryFunction.toString()})()">
           Reintentar
         </button>
       ` : ''}
     </div>
   `;
+  
+  console.error(`❌ Error en ${resourceName}:`, error);
 }
 
 // Hacer las funciones disponibles globalmente

@@ -3,6 +3,50 @@ import { db, rdb } from '../config/firebase.js';
 import { currentUser, realtimeSubscriptions } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 
+// 🔥 AGREGAR ESTOS IMPORTS FALTANTES
+import { showRealtimeNotification } from '../services/notifications.js';
+import { 
+    updatePieRequestStatus, 
+    deletePieRequest, 
+    updateProjectStatus, 
+    deleteCollaborativeProject 
+} from '../services/firestore.js';
+
+// 🔥 AGREGAR FUNCIONES FALTANTES
+function getUrgencyBadgeClass(urgency) {
+    const urgencyClasses = {
+        'alta': 'bg-danger',
+        'media': 'bg-warning text-dark',
+        'baja': 'bg-success'
+    };
+    return urgencyClasses[urgency] || 'bg-secondary';
+}
+
+function getStatusBadgeClass(status) {
+    const statusClasses = {
+        'pendiente': 'bg-warning text-dark',
+        'aprobada': 'bg-success',
+        'rechazada': 'bg-danger',
+        'completada': 'bg-info'
+    };
+    return statusClasses[status] || 'bg-secondary';
+}
+
+// 🔥 AGREGAR FUNCIÓN DE INICIALIZACIÓN
+export function initAssistantView() {
+    console.log("👨‍💼 Inicializando vista de asistente");
+    loadOnlineTeachersForAssistant();
+    loadPieRequestsForAssistant();
+    loadCollaborativeProjectsForAssistant();
+    loadAllContentForAssistant();
+}
+
+// 🔥 HACER FUNCIONES GLOBALES PARA LOS BOTONES
+window.updatePieRequestStatus = updatePieRequestStatus;
+window.deletePieRequest = deletePieRequest;
+window.updateProjectStatus = updateProjectStatus;
+window.deleteCollaborativeProject = deleteCollaborativeProject;
+
 export function loadOnlineTeachersForAssistant() {
     const el = document.getElementById("onlineTeachersAssistant");
     if (!el) {
@@ -159,7 +203,7 @@ export function loadPieRequestsForAssistant() {
                                 ${escapeHtml(request.studentName)} - ${escapeHtml(request.studentGrade)}
                                 ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
                             </div>
-                            <span class="badge badge-${request.status}">${request.status}</span>
+                            <span class="badge ${getStatusBadgeClass(request.status)}">${request.status}</span>
                         </div>
                         <div class="pie-request-meta">
                             <strong>Solicitado por:</strong> ${escapeHtml(request.requestedByName)} | 
@@ -197,8 +241,8 @@ export function loadPieRequestsForAssistant() {
                 `;
             });
             
-            if (hasNewItems && currentUser.role === 'asistente') {
-                showRealtimeNotification('Nueva solicitud PIE recibida', 'info', 'solicitó');
+            if (hasNewItems && currentUser && currentUser.role === 'asistente') {
+                showRealtimeNotification('Nueva solicitud PIE recibida', 'info');
             }
         }, error => {
             console.error("Error en tiempo real de solicitudes PIE (asistente):", error);
@@ -260,7 +304,7 @@ export function loadCollaborativeProjectsForAssistant() {
                                 ${escapeHtml(project.name)}
                                 ${isNew ? '<span class="badge bg-success ms-2">Nuevo</span>' : ''}
                             </div>
-                            <span class="badge badge-${project.status || 'pendiente'}">${project.status || 'pendiente'}</span>
+                            <span class="badge ${getStatusBadgeClass(project.status)}">${project.status || 'pendiente'}</span>
                         </div>
                         <div class="collaborative-project-meta">
                             <strong>Creado por:</strong> ${escapeHtml(project.createdByName)} | 
@@ -302,8 +346,8 @@ export function loadCollaborativeProjectsForAssistant() {
                 `;
             });
             
-            if (hasNewItems && currentUser.role === 'asistente') {
-                showRealtimeNotification('Nuevo proyecto colaborativo creado', 'warning', 'creó');
+            if (hasNewItems && currentUser && currentUser.role === 'asistente') {
+                showRealtimeNotification('Nuevo proyecto colaborativo creado', 'warning');
             }
         }, error => {
             console.error("Error en tiempo real de proyectos colaborativos (asistente):", error);
@@ -319,8 +363,7 @@ export function loadAllContentForAssistant() {
                     const project = { id: change.doc.id, ...change.doc.data() };
                     showRealtimeNotification(
                         `El profesor ${escapeHtml(project.uploadedByName || 'Un profesor')} subió: "${escapeHtml(project.title)}"`,
-                        'success',
-                        'subió'
+                        'success'
                     );
                 }
             });

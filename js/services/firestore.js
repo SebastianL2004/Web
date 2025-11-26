@@ -3,6 +3,7 @@ import { db } from '../config/firebase.js';
 import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showNotification } from './notifications.js';
+import { notifyProjectCompletion } from './realtime.js';
 
 export async function updatePieRequestStatus(requestId, status) {
     if (currentUser.role !== 'asistente') {
@@ -20,19 +21,71 @@ export async function updatePieRequestStatus(requestId, status) {
     }
 }
 
+// 🔥 FUNCIÓN ACTUALIZADA: Marcar proyecto como completado con notificación
 export async function updateProjectStatus(projectId, status) {
+    try {
+        const projectRef = db.collection("collaborativeProjects").doc(projectId);
+        const projectDoc = await projectRef.get();
+        const projectData = projectDoc.data();
+        
+        await projectRef.update({
+            status: status,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            completedAt: status === 'completada' ? firebase.firestore.FieldValue.serverTimestamp() : null
+        });
+        
+        // 🔥 NOTIFICAR AL DIRECTOR CUANDO SE COMPLETA UN PROYECTO
+        if (status === 'completada' || status === 'completado' || status === 'completed') {
+            console.log("🎉 Proyecto completado, notificando al director...");
+            
+            // Notificar a través de Realtime Database
+            notifyProjectCompletion(projectId, projectData.name);
+            
+            // Mostrar notificación especial para el asistente
+            showNotification('✅ Proyecto marcado como COMPLETADO - El director será notificado', 'success');
+        } else {
+            showNotification(`✅ Proyecto ${status} correctamente`, 'success');
+        }
+        
+    } catch (err) {
+        console.error("Error actualizando proyecto:", err);
+        showNotification('❌ Error al actualizar el proyecto: ' + err.message, 'error');
+    }
+}
+
+// 🔥 NUEVA FUNCIÓN: Marcar proyecto como completado (específica para asistente)
+export async function completeCollaborativeProject(projectId) {
     if (currentUser.role !== 'asistente') {
-        alert("Solo los asistentes PIE pueden modificar el estado de los proyectos");
+        alert("Solo los asistentes PIE pueden marcar proyectos como completados");
         return;
     }
     
     try {
-        await db.collection("collaborativeProjects").doc(projectId).update({
-            status: status
+        const projectRef = db.collection("collaborativeProjects").doc(projectId);
+        const projectDoc = await projectRef.get();
+        
+        if (!projectDoc.exists) {
+            throw new Error("Proyecto no encontrado");
+        }
+        
+        const projectData = projectDoc.data();
+        
+        await projectRef.update({
+            status: 'completada',
+            isCompleted: true,
+            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            completedBy: currentUser.name,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        showNotification(`✅ Proyecto ${status} correctamente`, 'success');
+        
+        // 🔥 NOTIFICACIÓN EN TIEMPO REAL AL DIRECTOR
+        notifyProjectCompletion(projectId, projectData.name);
+        
+        showNotification('✅ Proyecto marcado como COMPLETADO - El director será notificado', 'success');
+        
     } catch (err) {
-        showNotification('❌ Error al actualizar el proyecto: ' + err.message, 'error');
+        console.error("Error completando proyecto:", err);
+        showNotification('❌ Error al completar el proyecto: ' + err.message, 'error');
     }
 }
 
@@ -139,20 +192,12 @@ export async function deleteAllUserData(userId) {
     try {
         console.log("🗑️ Eliminando todos los datos del usuario:", userId);
         
-        // 1. Eliminar el documento principal del usuario
         await db.collection('users').doc(userId).delete();
         console.log("✅ Documento de usuario eliminado");
         
-        // 2. Eliminar proyectos creados por el usuario (si existen)
         await deleteUserProjects(userId);
-        
-        // 3. Eliminar comentarios del usuario en proyectos (si existen)
         await deleteUserComments(userId);
-        
-        // 4. Eliminar solicitudes PIE del usuario (si existen)
         await deleteUserPieRequests(userId);
-        
-        // 5. Eliminar proyectos colaborativos del usuario (si existen)
         await deleteUserCollaborativeProjects(userId);
         
         console.log("✅ Todos los datos del usuario eliminados de Firestore");
@@ -171,9 +216,6 @@ export async function deleteAllUserData(userId) {
     }
 }
 
-/**
- * Elimina proyectos creados por el usuario
- */
 async function deleteUserProjects(userId) {
     try {
         const projectsSnapshot = await db.collection('projects')
@@ -193,13 +235,9 @@ async function deleteUserProjects(userId) {
         
     } catch (error) {
         console.error("Error eliminando proyectos del usuario:", error);
-        // No lanzamos error para continuar con otras eliminaciones
     }
 }
 
-/**
- * Elimina comentarios del usuario en todos los proyectos
- */
 async function deleteUserComments(userId) {
     try {
         const projectsSnapshot = await db.collection('projects').get();
@@ -231,9 +269,6 @@ async function deleteUserComments(userId) {
     }
 }
 
-/**
- * Elimina solicitudes PIE del usuario
- */
 async function deleteUserPieRequests(userId) {
     try {
         const requestsSnapshot = await db.collection('pieRequests')
@@ -256,9 +291,6 @@ async function deleteUserPieRequests(userId) {
     }
 }
 
-/**
- * Elimina proyectos colaborativos del usuario
- */
 async function deleteUserCollaborativeProjects(userId) {
     try {
         const projectsSnapshot = await db.collection('collaborativeProjects')
@@ -281,17 +313,11 @@ async function deleteUserCollaborativeProjects(userId) {
     }
 }
 
-/**
- * Verifica si un usuario tiene datos asociados antes de eliminar
- */
 export async function checkUserHasData(userId) {
     try {
         const checks = [
-            // Verificar proyectos
             db.collection('projects').where('createdBy', '==', userId).limit(1).get(),
-            // Verificar solicitudes PIE
             db.collection('pieRequests').where('createdBy', '==', userId).limit(1).get(),
-            // Verificar proyectos colaborativos
             db.collection('collaborativeProjects').where('createdBy', '==', userId).limit(1).get()
         ];
         
@@ -314,7 +340,6 @@ export async function checkUserHasData(userId) {
     }
 }
 
-// 🔥 FUNCIÓN NUCLEAR - ELIMINAR TODOS LOS DATOS
 export async function nuclearDeleteAllData() {
     try {
         console.log("💥 Iniciando eliminación nuclear de todos los datos...");
@@ -326,27 +351,21 @@ export async function nuclearDeleteAllData() {
 
         let totalDeleted = 0;
 
-        // 1. Eliminar todos los usuarios (excepto admin actual)
         const usersResult = await deleteAllUsersExceptCurrent(currentUser.uid);
         totalDeleted += usersResult.deleted;
 
-        // 2. Eliminar todos los proyectos
         const projectsResult = await deleteAllProjects();
         totalDeleted += projectsResult.deleted;
 
-        // 3. Eliminar todas las solicitudes PIE
         const pieRequestsResult = await deleteAllPieRequests();
         totalDeleted += pieRequestsResult.deleted;
 
-        // 4. Eliminar todos los proyectos colaborativos
         const collaborativeResult = await deleteAllCollaborativeProjects();
         totalDeleted += collaborativeResult.deleted;
 
-        // 5. Eliminar todos los registros de deleted_users
         const deletedUsersResult = await deleteAllDeletedUsers();
         totalDeleted += deletedUsersResult.deleted;
 
-        // 6. Registrar la acción
         await db.collection('system_logs').doc().set({
             action: 'nuclear_delete',
             executedBy: currentUser.uid,
@@ -372,28 +391,22 @@ export async function nuclearDeleteAllData() {
     }
 }
 
-// 🔥 FUNCIONES AUXILIARES PARA ELIMINACIÓN NUCLEAR
-
-// 🔥 CORREGIR: Función para obtener usuario actual
 async function getCurrentUserInfo() {
     try {
         console.log("🔍 Buscando usuario actual...");
         
-        // Opción 1: Usar la función global si existe
         if (typeof window.getCurrentUser === 'function') {
             const user = window.getCurrentUser();
             console.log("✅ Usuario obtenido de window.getCurrentUser:", user);
             return user;
         }
         
-        // Opción 2: Usar Firebase Auth directamente
         const auth = firebase.auth();
         const currentUser = auth.currentUser;
         
         if (currentUser) {
             console.log("✅ Usuario de Firebase Auth:", currentUser.uid);
             
-            // Obtener datos adicionales de Firestore
             const userDoc = await db.collection('users').doc(currentUser.uid).get();
             if (userDoc.exists) {
                 const userData = userDoc.data();
