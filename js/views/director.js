@@ -10,7 +10,7 @@ import {
     loadDirectorComments, 
     addDirectorComment, 
     deleteDirectorComment 
-} from './directorComments.js'; 
+} from './director-comments.js'; // 🔥 CAMBIAR: directorComments.js → director-comments.js
 
 // 2. HACER LAS FUNCIONES GLOBALES PARA QUE EL HTML (onclick) LAS VEA
 window.addDirectorComment = addDirectorComment;
