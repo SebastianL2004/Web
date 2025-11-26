@@ -1,12 +1,11 @@
 // ------------------ DIRECTOR COMMENTS SYSTEM ------------------
-// 1. IMPORTANTE: Necesitamos importar 'firebase' para usar Timestamp y FieldValue
-import firebase from 'firebase/app'; 
-import 'firebase/firestore'; // Asegura que firestore esté cargado
-
 import { db } from '../config/firebase.js';
 import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showNotification } from '../services/notifications.js';
+
+// Usar firebase global que ya está cargado desde tu HTML
+const firebaseApp = window.firebase;
 
 export function loadDirectorComments(projectId) {
     const commentsBox = document.getElementById(`directorComments-${projectId}`);
