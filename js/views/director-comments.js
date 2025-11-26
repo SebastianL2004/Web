@@ -1,4 +1,8 @@
 // ------------------ DIRECTOR COMMENTS SYSTEM ------------------
+// 1. IMPORTANTE: Necesitamos importar 'firebase' para usar Timestamp y FieldValue
+import firebase from 'firebase/app'; 
+import 'firebase/firestore'; // Asegura que firestore esté cargado
+
 import { db } from '../config/firebase.js';
 import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
@@ -10,7 +14,7 @@ export function loadDirectorComments(projectId) {
 
     db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
         const project = doc.data();
-        const comments = project.directorComments || [];
+        const comments = project?.directorComments || []; // Uso de ?. por seguridad
 
         const commentCount = document.getElementById(`commentCount-${projectId}`);
         if (commentCount) {
@@ -21,7 +25,7 @@ export function loadDirectorComments(projectId) {
             commentsBox.innerHTML = `
                 <div class="text-center text-muted py-3">
                     <i class="fas fa-comments fa-2x mb-2"></i>
-                    <p>No hay comentarios aún.<br>Se el primero en comentar este proyecto.</p>
+                    <p>No hay comentarios aún.<br>Sé el primero en comentar este proyecto.</p>
                 </div>
             `;
             return;
@@ -40,7 +44,7 @@ export function loadDirectorComments(projectId) {
                     <div class="comment-text bg-light p-3 rounded">${escapeHtml(comment.text)}</div>
                     ${comment.author === currentUser.uid ? `
                         <div class="text-end mt-2">
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDirectorComment('${projectId}', '${comment.date.seconds}')">
+                            <button class="btn btn-sm btn-outline-danger" onclick="window.deleteDirectorComment('${projectId}', '${comment.date.seconds}')">
                                 <i class="fas fa-trash"></i> Eliminar
                             </button>
                         </div>
@@ -51,13 +55,18 @@ export function loadDirectorComments(projectId) {
 }
 
 export async function addDirectorComment(projectId) {
+    console.log("Intentando agregar comentario..."); // Debug
+
     if (currentUser.role !== 'director') {
         alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
         return;
     }
 
     const textElement = document.getElementById(`newDirectorComment-${projectId}`);
-    if (!textElement) return;
+    if (!textElement) {
+        console.error("No se encontró el input del comentario");
+        return;
+    }
     
     const text = textElement.value.trim();
     
@@ -71,11 +80,13 @@ export async function addDirectorComment(projectId) {
             author: currentUser.uid,
             authorName: currentUser.name,
             text: text,
-            date: firebase.firestore.Timestamp.now(),
+            // CORRECCIÓN: Usar Timestamp de la importación correcta o new Date()
+            date: firebase.firestore.Timestamp.now(), 
             role: 'director'
         };
 
         await db.collection("collaborativeProjects").doc(projectId).update({
+            // CORRECCIÓN: Usar FieldValue correctamente importado
             directorComments: firebase.firestore.FieldValue.arrayUnion(comment)
         });
 
@@ -88,6 +99,7 @@ export async function addDirectorComment(projectId) {
     }
 }
 
+// Función para eliminar
 export async function deleteDirectorComment(projectId, commentTimestamp) {
     if (!confirm("¿Estás seguro de que quieres eliminar este comentario?")) return;
 
@@ -97,7 +109,7 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
         const comments = project.directorComments || [];
         
         const commentToDelete = comments.find(comment => 
-            comment.date.seconds.toString() === commentTimestamp
+            comment.date.seconds.toString() === commentTimestamp.toString() // Convertir ambos a string por seguridad
         );
 
         if (!commentToDelete) {
@@ -121,3 +133,8 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
         showNotification('❌ Error al eliminar comentario: ' + err.message, 'error');
     }
 }
+
+// 2. IMPORTANTE: Exponer la función de eliminar al objeto global 'window'
+// Esto es necesario porque tu HTML generado usa 'onclick="deleteDirectorComment..."'
+// y el HTML no tiene acceso a las funciones dentro de los módulos.
+window.deleteDirectorComment = deleteDirectorComment;
