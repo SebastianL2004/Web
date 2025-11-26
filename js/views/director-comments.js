@@ -4,16 +4,13 @@ import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showNotification } from '../services/notifications.js';
 
-// Usar firebase global que ya está cargado desde tu HTML
-const firebaseApp = window.firebase;
-
 export function loadDirectorComments(projectId) {
     const commentsBox = document.getElementById(`directorComments-${projectId}`);
     if (!commentsBox) return;
 
     db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
         const project = doc.data();
-        const comments = project?.directorComments || []; // Uso de ?. por seguridad
+        const comments = project?.directorComments || [];
 
         const commentCount = document.getElementById(`commentCount-${projectId}`);
         if (commentCount) {
@@ -54,7 +51,7 @@ export function loadDirectorComments(projectId) {
 }
 
 export async function addDirectorComment(projectId) {
-    console.log("Intentando agregar comentario..."); // Debug
+    console.log("Intentando agregar comentario...");
 
     if (currentUser.role !== 'director') {
         alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
@@ -79,14 +76,12 @@ export async function addDirectorComment(projectId) {
             author: currentUser.uid,
             authorName: currentUser.name,
             text: text,
-            // CORRECCIÓN: Usar Timestamp de la importación correcta o new Date()
-            date: firebase.firestore.Timestamp.now(), 
+            date: new Date(), // ✅ CORREGIDO: Usar Date nativo
             role: 'director'
         };
 
         await db.collection("collaborativeProjects").doc(projectId).update({
-            // CORRECCIÓN: Usar FieldValue correctamente importado
-            directorComments: firebase.firestore.FieldValue.arrayUnion(comment)
+            directorComments: db.FieldValue.arrayUnion(comment) // ✅ CORREGIDO: Usar db.FieldValue
         });
 
         textElement.value = "";
@@ -98,7 +93,6 @@ export async function addDirectorComment(projectId) {
     }
 }
 
-// Función para eliminar
 export async function deleteDirectorComment(projectId, commentTimestamp) {
     if (!confirm("¿Estás seguro de que quieres eliminar este comentario?")) return;
 
@@ -108,7 +102,7 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
         const comments = project.directorComments || [];
         
         const commentToDelete = comments.find(comment => 
-            comment.date.seconds.toString() === commentTimestamp.toString() // Convertir ambos a string por seguridad
+            comment.date.seconds.toString() === commentTimestamp.toString()
         );
 
         if (!commentToDelete) {
@@ -122,7 +116,7 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
         }
 
         await db.collection("collaborativeProjects").doc(projectId).update({
-            directorComments: firebase.firestore.FieldValue.arrayRemove(commentToDelete)
+            directorComments: db.FieldValue.arrayRemove(commentToDelete) // ✅ CORREGIDO: Usar db.FieldValue
         });
 
         showNotification('✅ Comentario eliminado correctamente', 'success');
@@ -133,7 +127,5 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
     }
 }
 
-// 2. IMPORTANTE: Exponer la función de eliminar al objeto global 'window'
-// Esto es necesario porque tu HTML generado usa 'onclick="deleteDirectorComment..."'
-// y el HTML no tiene acceso a las funciones dentro de los módulos.
+// Exponer funciones globalmente
 window.deleteDirectorComment = deleteDirectorComment;
