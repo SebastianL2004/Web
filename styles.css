@@ -1686,3 +1686,222 @@ body::before {
     70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
     100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
 }
+
+/* ===== ESTILOS PARA LOS CAMBIOS SOLICITADOS ===== */
+
+/* 🔥 ESTILOS PARA SELECT MÚLTIPLE DE DÍAS ALTERNATIVOS */
+#preferredDays {
+    min-height: 120px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+#preferredDays:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 0.2rem rgba(27, 156, 252, 0.15);
+}
+
+#preferredDays option {
+    padding: 8px 12px;
+    margin: 2px 0;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+#preferredDays option:hover {
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
+    color: white;
+}
+
+#preferredDays option:checked {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+}
+
+/* 🔥 CONTADOR DE DÍAS SELECCIONADOS */
+.days-counter {
+    font-size: 0.85rem;
+    margin-top: 8px;
+}
+
+.days-counter .counter {
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.days-counter .counter.text-success {
+    color: var(--success-color) !important;
+}
+
+.days-counter .counter.text-warning {
+    color: var(--warning-color) !important;
+}
+
+.days-counter .counter.text-muted {
+    color: #6c757d !important;
+}
+
+/* 🔥 MEJORAS VISUALES PARA FORMULARIOS */
+.form-label {
+    font-weight: 600;
+    color: var(--dark-blue);
+    margin-bottom: 8px;
+}
+
+/* 🔥 ESTILOS RESPONSIVOS PARA SELECT MÚLTIPLE */
+@media (max-width: 768px) {
+    #preferredDays {
+        min-height: 100px;
+        font-size: 0.9rem;
+    }
+    
+    .days-counter {
+        font-size: 0.8rem;
+    }
+}
+
+/* 🔥 MEJORAS PARA EL FORMULARIO DE PROYECTO COLABORATIVO */
+#projectTeacher {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 0.3s ease;
+}
+
+#projectTeacher:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 0.2rem rgba(27, 156, 252, 0.15);
+}
+
+/* 🔥 BADGE PARA ASISTENTE PIE EN OPCIONES */
+.assistant-option {
+    background: linear-gradient(135deg, var(--warning-color), #f6b93b);
+    color: #000;
+    font-weight: 500;
+}
+
+.professor-option {
+    background: linear-gradient(135deg, var(--accent-color), var(--light-accent));
+    color: white;
+    font-weight: 500;
+}
+
+/* 🔥 ESTILOS PARA OPCIONES DEL SELECTOR DE COLABORADORES */
+#projectTeacher option {
+    padding: 10px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+/* 🔥 MEJORAS VISUALES PARA LOS FORMULARIOS */
+.form-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid var(--primary-color);
+    margin-bottom: 20px;
+}
+
+.section-title {
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+/* 🔥 ESTILOS PARA ALERTAS DE VALIDACIÓN */
+.invalid-feedback {
+    display: none;
+    color: var(--danger-color);
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+
+.is-invalid {
+    border-color: var(--danger-color) !important;
+}
+
+.is-invalid:focus {
+    box-shadow: 0 0 0 0.2rem rgba(225, 112, 85, 0.25) !important;
+}
+
+/* 🔥 MEJORAS PARA TEXTOS DE AYUDA */
+.text-muted {
+    color: #6c757d !important;
+    font-size: 0.85rem;
+}
+
+/* 🔥 ESTILOS PARA BOTONES DE ACCIÓN EN FORMULARIOS */
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.form-actions .btn {
+    flex: 1;
+    padding: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+}
+
+/* 🔥 RESPONSIVE PARA FORMULARIOS */
+@media (max-width: 576px) {
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .form-actions .btn {
+        width: 100%;
+    }
+    
+    .form-section {
+        padding: 15px;
+    }
+    
+    .section-title {
+        font-size: 1rem;
+    }
+}
+
+/* 🔥 ESTILOS PARA PLACEHOLDERS MEJORADOS */
+.form-control::placeholder,
+.form-select::placeholder {
+    color: #6c757d;
+    opacity: 0.7;
+}
+
+.form-control:focus::placeholder,
+.form-select:focus::placeholder {
+    opacity: 0.5;
+}
+
+/* 🔥 ANIMACIONES SUAVES PARA CAMBIOS DE ESTADO */
+.form-control,
+.form-select,
+#preferredDays {
+    transition: all 0.3s ease;
+}
+
+/* 🔥 ESTILOS PARA GRUPOS DE FORMULARIO MEJORADOS */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* 🔥 MEJORAS PARA CHECKBOX Y RADIO BUTTONS */
+.form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.form-check-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 0.2rem rgba(27, 156, 252, 0.25);
+}

@@ -100,37 +100,54 @@ async function loadTeachersForCollaborativeProject() {
         // Obtener usuario seguro
         const safeUser = await getSafeUser();
         
-        const snap = await db.collection("users").where("role", "==", "profesor").get();
+        // 🔥 CAMBIO: Obtener tanto profesores como asistentes PIE
+        const [teachersSnap, assistantsSnap] = await Promise.all([
+            db.collection("users").where("role", "==", "profesor").get(),
+            db.collection("users").where("role", "==", "asistente").get()
+        ]);
         
-        teacherSelect.innerHTML = '<option value="">Selecciona un docente</option>';
+        teacherSelect.innerHTML = '<option value="">Selecciona un colaborador</option>';
         
-        if (!snap.empty) {
-            let teachersLoaded = 0;
-            
-            snap.forEach(doc => {
+        let collaboratorsLoaded = 0;
+        
+        // 🔥 AGREGAR ASISTENTES PIE A LA LISTA
+        if (!assistantsSnap.empty) {
+            assistantsSnap.forEach(doc => {
+                const assistant = doc.data();
+                // No mostrar al usuario actual en la lista si está disponible
+                if (!safeUser || doc.id !== safeUser.uid) {
+                    const option = document.createElement("option");
+                    option.value = assistant.name;
+                    option.textContent = `${assistant.name} (Asistente PIE)`;
+                    teacherSelect.appendChild(option);
+                    collaboratorsLoaded++;
+                }
+            });
+        }
+        
+        // 🔥 AGREGAR PROFESORES A LA LISTA
+        if (!teachersSnap.empty) {
+            teachersSnap.forEach(doc => {
                 const teacher = doc.data();
-                
                 // No mostrar al usuario actual en la lista si está disponible
                 if (!safeUser || doc.id !== safeUser.uid) {
                     const option = document.createElement("option");
                     option.value = teacher.name;
-                    option.textContent = teacher.name;
+                    option.textContent = `${teacher.name} (Profesor)`;
                     teacherSelect.appendChild(option);
-                    teachersLoaded++;
+                    collaboratorsLoaded++;
                 }
             });
-            
-            console.log(`✅ ${teachersLoaded} docentes cargados`);
-            
-            if (teachersLoaded === 0) {
-                teacherSelect.innerHTML = '<option value="">No hay otros docentes disponibles</option>';
-            }
-        } else {
-            teacherSelect.innerHTML = '<option value="">No hay docentes registrados</option>';
+        }
+        
+        console.log(`✅ ${collaboratorsLoaded} colaboradores cargados (profesores + asistentes PIE)`);
+        
+        if (collaboratorsLoaded === 0) {
+            teacherSelect.innerHTML = '<option value="">No hay colaboradores disponibles</option>';
         }
     } catch (error) {
-        console.error("❌ Error cargando docentes:", error);
-        teacherSelect.innerHTML = '<option value="">Error al cargar docentes</option>';
+        console.error("❌ Error cargando colaboradores:", error);
+        teacherSelect.innerHTML = '<option value="">Error al cargar colaboradores</option>';
     }
 }
 

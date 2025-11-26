@@ -590,14 +590,16 @@
               <!-- Días Alternativos -->
               <div class="mb-3">
                 <label class="form-label">Días alternativos de preferencia</label>
-                <select id="preferredDays" class="form-select" multiple>
+                <select id="preferredDays" class="form-select" multiple size="3">
                   <option value="Lunes">Lunes</option>
                   <option value="Martes">Martes</option>
                   <option value="Miércoles">Miércoles</option>
                   <option value="Jueves">Jueves</option>
                   <option value="Viernes">Viernes</option>
                 </select>
-                <small class="text-muted">Mantén presionada la tecla Ctrl para seleccionar múltiples días</small>
+                <small class="text-muted">Puedes seleccionar hasta 2 días alternativos</small>
+                <div class="days-counter small text-muted mt-1">Días seleccionados: <span class="counter">0</span>/2
+                </div>
               </div>
 
               <!-- Descripción -->
@@ -667,10 +669,10 @@
               </div>
               <div class="col-md-6">
                 <div class="mb-3">
-                  <label class="form-label">Docente Colaborador *</label>
+                  <label class="form-label">Colaborar con *</label>
                   <select id="projectTeacher" class="form-select" required>
-                    <option value="">Seleccionar docente...</option>
-                    <!-- Los docentes se cargarán dinámicamente desde la base de datos -->
+                    <option value="">Seleccionar colaborador...</option>
+                    <!-- Los colaboradores se cargarán dinámicamente desde la base de datos -->
                   </select>
                 </div>
               </div>
@@ -799,7 +801,7 @@
     </div>
   </div>
 
-   <!-- Firebase SDK -->
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
