@@ -4,6 +4,9 @@ import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showNotification } from '../services/notifications.js';
 
+// Usar firebase global que ya está cargado desde tu HTML
+const firebaseApp = window.firebase;
+
 export function loadDirectorComments(projectId) {
     const commentsBox = document.getElementById(`directorComments-${projectId}`);
     if (!commentsBox) return;
@@ -76,12 +79,12 @@ export async function addDirectorComment(projectId) {
             author: currentUser.uid,
             authorName: currentUser.name,
             text: text,
-            date: new Date(), // ✅ CORREGIDO: Usar Date nativo
+            date: firebaseApp.firestore.Timestamp.now(),
             role: 'director'
         };
 
         await db.collection("collaborativeProjects").doc(projectId).update({
-            directorComments: db.FieldValue.arrayUnion(comment) // ✅ CORREGIDO: Usar db.FieldValue
+            directorComments: firebaseApp.firestore.FieldValue.arrayUnion(comment)
         });
 
         textElement.value = "";
@@ -116,7 +119,7 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
         }
 
         await db.collection("collaborativeProjects").doc(projectId).update({
-            directorComments: db.FieldValue.arrayRemove(commentToDelete) // ✅ CORREGIDO: Usar db.FieldValue
+            directorComments: firebaseApp.firestore.FieldValue.arrayRemove(commentToDelete)
         });
 
         showNotification('✅ Comentario eliminado correctamente', 'success');
@@ -128,4 +131,5 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
 }
 
 // Exponer funciones globalmente
+window.addDirectorComment = addDirectorComment;
 window.deleteDirectorComment = deleteDirectorComment;
