@@ -4,24 +4,19 @@ import { currentUser } from '../config/constants.js';
 import { escapeHtml } from '../utils/security.js';
 import { showNotification } from '../services/notifications.js';
 
-// Usar firebase global que ya está cargado desde tu HTML
 const firebaseApp = window.firebase;
 
 export function loadDirectorComments(projectId) {
-    const commentsBox = document.getElementById(`directorComments-${projectId}`);
+    // 🔥 BUSCAR TODOS LOS POSIBLES IDs
+    let commentsBox = document.getElementById(`directorComments-${projectId}`);
     if (!commentsBox) {
-        console.log("ℹ️ No se encontró commentsBox para:", projectId);
-        return;
+        commentsBox = document.getElementById(`directorCommentList-${projectId}`);
     }
+    if (!commentsBox) return;
 
     db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
         const project = doc.data();
         const comments = project?.directorComments || [];
-
-        const commentCount = document.getElementById(`commentCount-${projectId}`);
-        if (commentCount) {
-            commentCount.textContent = comments.length;
-        }
 
         if (!comments.length) {
             commentsBox.innerHTML = `
@@ -64,15 +59,15 @@ export async function addDirectorComment(projectId) {
         return;
     }
 
-    // 🔥 BUSCAR AMBOS POSIBLES IDs (por compatibilidad)
+    // 🔥 BUSCAR TODOS LOS POSIBLES IDs
     let textElement = document.getElementById(`newDirectorComment-${projectId}`);
     if (!textElement) {
         textElement = document.getElementById(`directorComment-${projectId}`);
     }
     
     if (!textElement) {
-        console.error("❌ No se encontró el input del comentario para:", projectId);
-        console.log("Buscando IDs:", `newDirectorComment-${projectId}`, `directorComment-${projectId}`);
+        console.error("❌ No se encontró ningún input de comentario para:", projectId);
+        console.log("IDs buscados:", `newDirectorComment-${projectId}`, `directorComment-${projectId}`);
         return;
     }
     
@@ -139,8 +134,8 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
     }
 }
 
-// 🔥 EXPONER FUNCIONES GLOBALMENTE - ESTO ES LO MÁS IMPORTANTE
+// 🔥 EXPONER FUNCIONES GLOBALMENTE
 window.addDirectorComment = addDirectorComment;
 window.deleteDirectorComment = deleteDirectorComment;
 
-console.log("✅ Módulo de comentarios del director cargado y funciones expuestas");
+console.log("✅ Módulo de comentarios del director cargado");
