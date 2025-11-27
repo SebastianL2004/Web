@@ -61,9 +61,10 @@ export async function addDirectorComment(projectId) {
         return;
     }
 
-    const textElement = document.getElementById(`newDirectorComment-${projectId}`);
+    // 🔥 CAMBIAR: Buscar el ID correcto que está en tu director.js
+    const textElement = document.getElementById(`directorComment-${projectId}`);
     if (!textElement) {
-        console.error("No se encontró el input del comentario");
+        console.error("No se encontró el input del comentario con ID:", `directorComment-${projectId}`);
         return;
     }
     
