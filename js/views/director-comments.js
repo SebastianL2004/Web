@@ -9,7 +9,10 @@ const firebaseApp = window.firebase;
 
 export function loadDirectorComments(projectId) {
     const commentsBox = document.getElementById(`directorComments-${projectId}`);
-    if (!commentsBox) return;
+    if (!commentsBox) {
+        console.log("ℹ️ No se encontró commentsBox para:", projectId);
+        return;
+    }
 
     db.collection("collaborativeProjects").doc(projectId).onSnapshot(doc => {
         const project = doc.data();
@@ -54,17 +57,22 @@ export function loadDirectorComments(projectId) {
 }
 
 export async function addDirectorComment(projectId) {
-    console.log("Intentando agregar comentario...");
+    console.log("🎯 Intentando agregar comentario para proyecto:", projectId);
 
     if (currentUser.role !== 'director') {
         alert('Solo el director puede agregar comentarios en los proyectos colaborativos.');
         return;
     }
 
-    // 🔥 CAMBIAR: Buscar el ID correcto que está en tu director.js
-    const textElement = document.getElementById(`directorComment-${projectId}`);
+    // 🔥 BUSCAR AMBOS POSIBLES IDs (por compatibilidad)
+    let textElement = document.getElementById(`newDirectorComment-${projectId}`);
     if (!textElement) {
-        console.error("No se encontró el input del comentario con ID:", `directorComment-${projectId}`);
+        textElement = document.getElementById(`directorComment-${projectId}`);
+    }
+    
+    if (!textElement) {
+        console.error("❌ No se encontró el input del comentario para:", projectId);
+        console.log("Buscando IDs:", `newDirectorComment-${projectId}`, `directorComment-${projectId}`);
         return;
     }
     
@@ -131,6 +139,8 @@ export async function deleteDirectorComment(projectId, commentTimestamp) {
     }
 }
 
-// Exponer funciones globalmente
+// 🔥 EXPONER FUNCIONES GLOBALMENTE - ESTO ES LO MÁS IMPORTANTE
 window.addDirectorComment = addDirectorComment;
 window.deleteDirectorComment = deleteDirectorComment;
+
+console.log("✅ Módulo de comentarios del director cargado y funciones expuestas");
